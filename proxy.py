@@ -35,6 +35,7 @@ import socket
 import json
 import atexit
 import Queue
+import optparse
 
 
 CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
@@ -46,6 +47,25 @@ END_ALTERNATE_MODE = set('\x1b[?{0}l'.format(i) for i in ('1049', '47', '1047'))
 ALTERNATE_MODE_FLAGS = tuple(START_ALTERNATE_MODE) + tuple(END_ALTERNATE_MODE)
 
 INITIAL_RECONNECT_DELAY = 1000
+
+
+def read_floorc():
+    settings = {}
+    p = os.path.expanduser('~/.floorc')
+    try:
+        fd = open(p, 'rb')
+    except IOError as e:
+        if e.errno == 2:
+            return settings
+        raise
+    data = fd.read()
+    fd.close()
+    for line in data.split('\n'):
+        position = line.find(' ')
+        if position < 0:
+            continue
+        settings[line[:position]] = line[position + 1:]
+    return settings
 
 
 def out(*args):
@@ -70,6 +90,42 @@ def findlast(s, substrs):
     return result
 
 
+def main():
+    settings = read_floorc()
+    parser = optparse.OptionParser()
+
+    parser.add_option("--user",
+        dest="user",
+        default=settings.get('user'),
+        help="your username")
+
+    parser.add_option("--secret",
+        dest="secret",
+        default=settings.get('secret'),
+        help="your secret (apikey)")
+
+    parser.add_option("--join",
+        dest="room",
+        help="the room to join")
+
+    parser.add_option("--list",
+        dest="list",
+        help="list all ptys in the room")
+
+    parser.add_option("--create",
+        dest="create",
+        help="create a new flootty")
+
+    options, args = parser.parse_args()
+
+    out('\nThe dream has begun.\n')
+    f = Flooty(options)
+    atexit.register(f.cleanup)
+    f.connect()
+    f.select()
+    out('\nThe dream is (probably) over.\n')
+
+
 class FD(object):
     def __init__(self, fileno, reader=None, writer=None, errer=None):
         self.fileno = fileno
@@ -86,7 +142,7 @@ class Flooty(object):
     This class does the actual work of the pseudo terminal. The spawn() function is the main entrypoint.
     '''
 
-    def __init__(self):
+    def __init__(self, options):
         self.master_fd = None
         self.old_handler = None
         self.mode = None
@@ -98,6 +154,8 @@ class Flooty(object):
         self.errers = set()
         self.empty_selects = 0
         self.buf_out = Queue.Queue()
+        self.options = options
+        self.finished_startup = False
 
     def add_fd(self, fileno, **kwargs):
         try:
@@ -113,6 +171,9 @@ class Flooty(object):
             self.writers.add(fileno)
         if fd.errer:
             self.errers.add(fileno)
+
+    def transport(self, name, data=""):
+        self.buf_out.put({"name": name, "data": data}, True)
 
     def select(self):
         '''
@@ -164,7 +225,7 @@ class Flooty(object):
             except Queue.Empty:
                 break
             else:
-                self.sock.sendall(json.dumps(item))
+                self.sock.sendall(json.dumps(item) + '\n')
 
     def cloud_err(self, err):
         self.reconnect()
@@ -189,6 +250,22 @@ class Flooty(object):
         self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err)
         out(str(self.readers), str(self.writers))
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
+        if not self.finished_startup:
+            self.startup()
+            self.finished_startup = True
+
+    def get_list(self):
+        self.transport("list")
+
+    def startup(self):
+        if self.options.list:
+            return self.get_list()
+        elif self.options.join:
+            self.action = self.join
+            self.value = self.options.create
+        elif self.options.create:
+            self.action = 'create'
+            self.value = self.options.create
 
     def spawn(self, argv=None):
         '''
@@ -269,8 +346,8 @@ class Flooty(object):
                 # self.write_master('echo "Leaving special mode."\r')
                 pass
         if data:
-            self.buf_out.put({"stdout": data}, True)
-        out(data)
+            self.transport("stdout", data)
+            out(data)
 
     def stdin_read(self, fd):
         '''
@@ -279,13 +356,7 @@ class Flooty(object):
         data = os.read(fd, 1024)
         self.write_master(data)
         if data:
-            self.buf_out.put({"stdin": data}, True)
+            self.transport("stdin", data)
 
 if __name__ == '__main__':
-    i = Flooty()
-    out('\nThe dream has begun.\n')
-    atexit.register(i.cleanup)
-    i.spawn(sys.argv[1:])
-    i.connect()
-    i.select()
-    out('\nThe dream is (probably) over.\n')
+    main()
