@@ -446,8 +446,15 @@ class Flooty(object):
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write)
 
-        # WRITE ME TO STDIN
-        self.handle_stdio = out
+        def net_stdin_write(buf):
+            while buf and len(buf) > 0:
+                try:
+                    n = os.write(self.master_fd, buf)
+                    buf = buf[n:]
+                except (IOError, OSError):
+                    pass
+
+        self.handle_stdio = net_stdin_write
 
     def cleanup(self):
         mode = getattr(self, 'mode')
