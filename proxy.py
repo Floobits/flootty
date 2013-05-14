@@ -290,7 +290,8 @@ class Flooty(object):
         else:
             for term_id, term in ri['terms'].items():
                 if term['name'] == self.options.join:
-                    self.term_id = term_id
+                    self.term_id = int(term_id)
+                    break
             if self.term_id is None:
                 out('No terminal with name %s' % self.options.join)
                 sys.exit(1)
@@ -304,6 +305,7 @@ class Flooty(object):
             out('omg got a stdin event but we should never get one')
             return
         if data.get('id') != self.term_id:
+            out('wrong id')
             return
         self.handle_stdio(data['data'])
 
@@ -312,6 +314,7 @@ class Flooty(object):
             out('omg got a stdout event but we should never get one')
             return
         if data.get('id') != self.term_id:
+            out('wrong id %s vs %s' % (data.get('id'), self.term_id))
             return
         self.handle_stdio(data['data'])
 
@@ -386,7 +389,16 @@ class Flooty(object):
                 self.transport("term_stdin", {'data': data, 'id': self.term_id})
 
         self.add_fd(stdin, reader=ship_stdin)
-        self.handle_stdio = lambda buf: sys.stdout.write(buf)
+
+        def stdout_write(buf):
+            while len(buf) > 0:
+                try:
+                    n = os.write(stdout, buf)
+                    buf = buf[n:]
+                except (IOError, OSError):
+                    pass
+
+        self.handle_stdio = stdout_write
 
     def create_term(self):
         '''
@@ -425,9 +437,12 @@ class Flooty(object):
 
         def stdin_write(fd):
             data = os.read(fd, 1024)
-            if data:
-                n = os.write(self.master_fd, data)
-                data = data[n:]
+            while data and len(data) > 0:
+                try:
+                    n = os.write(self.master_fd, data)
+                    data = data[n:]
+                except (IOError, OSError):
+                    pass
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write)
 
