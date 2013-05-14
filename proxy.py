@@ -268,7 +268,7 @@ class Flooty(object):
             try:
                 data = json.loads(before)
             except Exception as e:
-                out('Unable to parse json:', e)
+                out('Unable to parse json: %s' % str(e))
                 raise e
             self.handle_event(data)
             self.buf_in = after
@@ -277,9 +277,9 @@ class Flooty(object):
         name = data.get('name')
         if not name:
             return out('no name in data?!?')
-        func = getattr(self, "on_%s" % (name))
+        func = getattr(self, "on_%s" % (name), None)
         if not func:
-            return out('unknown name!', name, 'data:', data)
+            return out('unknown name %s data: %s' % (name, data))
         func(data)
 
     def on_room_info(self, ri):
@@ -403,12 +403,12 @@ class Flooty(object):
             os.execlp(shell, shell)
 
         self.old_handler = signal.signal(signal.SIGWINCH, self._signal_winch)
-        # try:
-        #     self.mode = tty.tcgetattr(pty.STDIN_FILENO)
-        #     tty.setraw(pty.STDIN_FILENO)
-        # # This is the same as termios.error
-        # except tty.error:
-        #     pass
+        try:
+            self.mode = tty.tcgetattr(pty.STDIN_FILENO)
+            tty.setraw(pty.STDIN_FILENO)
+        # This is the same as termios.error
+        except tty.error:
+            pass
 
         self._set_pty_size()
 
@@ -422,6 +422,14 @@ class Flooty(object):
                 out(data)
 
         self.add_fd(self.master_fd, reader=stdout_write)
+
+        def stdin_write(fd):
+            data = os.read(fd, 1024)
+            if data:
+                n = os.write(self.master_fd, data)
+                data = data[n:]
+
+        self.add_fd(pty.STDIN_FILENO, reader=stdin_write)
 
         # WRITE ME TO STDIN
         self.handle_stdio = out
