@@ -287,7 +287,7 @@ class Flooty(object):
         if self.options.create:
             self.transport('create_term', {'term_name': self.options.create})
             self.create_term()
-        else:
+        elif self.options.join:
             for term_id, term in ri['terms'].items():
                 if term['name'] == self.options.join:
                     self.term_id = int(term_id)
@@ -296,6 +296,11 @@ class Flooty(object):
                 out('No terminal with name %s' % self.options.join)
                 sys.exit(1)
             self.join_term()
+        elif self.options.list:
+            print('Terminals in %s::%s' % (self.owner, self.room))
+            for term_id, term in ri['terms'].items():
+                print('terminal %s created by %s' % (term['name'], term['owner']))
+            sys.exit(0)
 
     def on_create_term(self, data):
         self.term_id = data.get('id')
@@ -363,12 +368,7 @@ class Flooty(object):
         self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err)
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
 
-    def get_list(self):
-        self.transport("list", {})
-
     def startup(self):
-        if self.options.list:
-            return self.get_list()
         self.connect_to_internet()
         self.select()
 
