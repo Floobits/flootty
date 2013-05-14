@@ -33,7 +33,7 @@ import sys
 import termios
 import tty
 import socket
-#import ssl
+import ssl
 import json
 import atexit
 import Queue
@@ -106,6 +106,16 @@ def main():
         default=settings.get('secret'),
         help="your secret (apikey)")
 
+    parser.add_option("--host",
+        dest="host",
+        default="localhost",
+        help="the host to connect to")
+
+    parser.add_option("--port",
+        dest="port",
+        default=3148,
+        help="the port to connect to")
+
     parser.add_option("--join",
         dest="join",
         help="the room to join")
@@ -148,8 +158,8 @@ class Flooty(object):
         self.master_fd = None
         self.old_handler = None
         self.mode = None
-        self.host = 'localhost'
-        self.port = 5678
+        self.host = options.host
+        self.port = options.port
         self.fds = {}
         self.readers = set()
         self.writers = set()
@@ -268,14 +278,14 @@ class Flooty(object):
 
         if self.options.create:
             self.transport('create_pty', {'name': self.options.create})
-            self.spew()
+            self.create_term()
         else:
-            self.drain()
+            self.join_term()
 
         self.connect_to_internet()
         self.select()
 
-    def drain(self):
+    def join_term(self):
         stdout = sys.stdout.fileno()
         tty.setraw(stdout)
         fl = fcntl.fcntl(stdout, fcntl.F_GETFL)
@@ -294,7 +304,7 @@ class Flooty(object):
         self.add_fd(stdin, reader=ship_stdin)
         self.handle_buf_in = lambda buf: sys.stdout.write(buf)
 
-    def spew(self):
+    def create_term(self):
         '''
         Create a spawned process.
         Based on the code for pty.spawn().
@@ -318,7 +328,7 @@ class Flooty(object):
 
         self._set_pty_size()
 
-        def spew_stdout(fd):
+        def stdout_write(fd):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
@@ -327,7 +337,7 @@ class Flooty(object):
                 self.transport("stdout", data)
                 out(data)
 
-        self.add_fd(self.master_fd, reader=spew_stdout)
+        self.add_fd(self.master_fd, reader=stdout_write)
 
         def stdin_read(fd):
             '''
