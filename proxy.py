@@ -285,7 +285,7 @@ class Flooty(object):
     def on_room_info(self, ri):
         self.authed = True
         if self.options.create:
-            self.transport('create_term', {'name': self.options.create})
+            self.transport('create_term', {'term_name': self.options.create})
             self.create_term()
         else:
             for term_id, term in ri['terms'].items():
