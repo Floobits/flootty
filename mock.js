@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 var net = require('net');
+var _ = require('underscore');
 var util = require('util');
 var events = require("events");
 
@@ -7,7 +8,7 @@ var TTYServer = function(){
   var self = this;
 
   self.rooms = {};
-  self.number = 0;
+  self.number = 1;
   self.conns = {};
 
   self.server = net.createServer(function(conn){
@@ -20,6 +21,7 @@ var TTYServer = function(){
 
     ptyconn.on('create_pty', self.create_pty.bind(self));
 
+    ptyconn.on('stdout', self.broadcast.bind(self));
     self.conns[number] = ptyconn;
 
   });
@@ -36,6 +38,18 @@ TTYServer.prototype.listen = function(){
   });
 };
 
+TTYServer.prototype.broadcast = function(sender, stdout){
+  var self = this;
+
+  _.each(self.conns, function(conn, number){
+    if (number == sender.id){
+      return;
+    }
+    console.log('sending stdout');
+    conn.send(stdout);
+  });
+  console.log('got stdout', stdout);
+};
 
 TTYServer.prototype.create_pty = function(event){
   var self = this;
@@ -78,6 +92,12 @@ PTYConn.prototype.on_data = function (d) {
   }
 };
 
+PTYConn.prototype.send = function (d) {
+  var self = this;
+
+  self.conn.write(d);
+};
+
 PTYConn.prototype.on_end = function (d) {
   console.log('gone');
 };
@@ -91,8 +111,7 @@ PTYConn.prototype.handle_msg = function (msg){
     log.error("couldn't parse json:", msg, "error:", e);
     return self.disconnect();
   }
-
-  return self.emit(msg.name, msg);
+  return self.emit(msg.name, self, msg.data);
 };
 
 

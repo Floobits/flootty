@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Heavily influenced by the work of Joshua D. Bartlett
 # see: http://sqizit.bartletts.id.au/2011/02/14/pseudo-terminals-in-python/
 # original copyright
@@ -37,8 +39,8 @@ import atexit
 import Queue
 import optparse
 
-
 CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
+
 
 # The following escape codes are xterm codes.
 # See http://rtfm.etla.org/xterm/ctlseq.html for more.
@@ -105,7 +107,7 @@ def main():
         help="your secret (apikey)")
 
     parser.add_option("--join",
-        dest="room",
+        dest="join",
         help="the room to join")
 
     parser.add_option("--list",
@@ -121,8 +123,8 @@ def main():
     out('\nThe dream has begun.\n')
     f = Flooty(options)
     atexit.register(f.cleanup)
-    f.connect()
-    f.select()
+    f.startup()
+
     out('\nThe dream is (probably) over.\n')
 
 
@@ -156,6 +158,7 @@ class Flooty(object):
         self.buf_out = Queue.Queue()
         self.options = options
         self.finished_startup = False
+        self.buf_in = []
 
     def add_fd(self, fileno, **kwargs):
         try:
@@ -177,7 +180,6 @@ class Flooty(object):
 
     def select(self):
         '''
-        Main select loop. Passes all data to self.master_read() or self.stdin_read().
         '''
         attrs = ('errer', 'reader', 'writer')
         while True:
@@ -211,7 +213,7 @@ class Flooty(object):
                 break
         if buf:
             self.empty_selects = 0
-            out(buf)
+            self.handle_buf_in(buf)
         else:
             self.empty_selects += 1
             if self.empty_selects > 10:
@@ -234,7 +236,7 @@ class Flooty(object):
         out('not reconnecting\n')
         sys.exit()
 
-    def connect(self):
+    def connect_to_internet(self):
         self.empty_selects = 0
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #self.sock = ssl.wrap_socket(sock, ca_certs=CERT, cert_reqs=ssl.CERT_REQUIRED)
@@ -248,11 +250,7 @@ class Flooty(object):
         self.sock.setblocking(0)
         out('Connected!\n')
         self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err)
-        out(str(self.readers), str(self.writers))
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
-        if not self.finished_startup:
-            self.startup()
-            self.finished_startup = True
 
     def get_list(self):
         self.transport("list")
@@ -260,26 +258,26 @@ class Flooty(object):
     def startup(self):
         if self.options.list:
             return self.get_list()
-        elif self.options.join:
-            self.action = self.join
-            self.value = self.options.create
-        elif self.options.create:
-            self.action = 'create'
-            self.value = self.options.create
 
-    def spawn(self, argv=None):
-        '''
-        Create a spawned process.
-        Based on the code for pty.spawn().
-        '''
+        if self.options.create:
+            self.fork(True)
+            self.spew()
+        else:
+            self.fork(False)
+            self.drain()
+
+        self.connect_to_internet()
+        self.select()
+
+    def fork(self, exec_shell):
         assert self.master_fd is None
-        if not argv:
-            argv = [os.environ['SHELL']]
+        shell = os.environ['SHELL']
 
         pid, master_fd = pty.fork()
         self.master_fd = master_fd
         if pid == pty.CHILD:
-            os.execlp(argv[0], *argv)
+            if exec_shell:
+                os.execlp(shell, shell)
 
         self.old_handler = signal.signal(signal.SIGWINCH, self._signal_winch)
         try:
@@ -289,15 +287,55 @@ class Flooty(object):
             pass
 
         self._set_pty_size()
-        self.add_fd(master_fd, reader=self.master_read)
-        self.add_fd(pty.STDIN_FILENO, reader=self.stdin_read)
+
+    def drain(self):
+        def print_stdout(fd):
+            '''
+            Called when there is data to be sent from the child process back to the user.
+            '''
+            out(os.read(fd, 1024))
+        self.add_fd(self.master_fd, reader=print_stdout)
+
+        # self.add_fd(pty.STDIN_FILENO, reader=reader)
+        self.handle_buf_in = self.write_master
+
+    def spew(self):
+        '''
+        Create a spawned process.
+        Based on the code for pty.spawn().
+        '''
+        def spew_stdout(fd):
+            '''
+            Called when there is data to be sent from the child process back to the user.
+            '''
+            data = os.read(fd, 1024)
+            if data:
+                self.transport("stdout", data)
+                out(data)
+
+        self.add_fd(self.master_fd, reader=spew_stdout)
+
+        def stdin_read(fd):
+            '''
+            Called when there is data to be sent from the user/controlling terminal down to the child process.
+            '''
+            data = os.read(fd, 1024)
+            self.write_master(data)
+            if data:
+                self.transport("stdin", data)
+
+        self.add_fd(pty.STDIN_FILENO, reader=stdin_read)
+        self.handle_buf_in = out
 
     def cleanup(self):
         mode = getattr(self, 'mode')
         if mode:
             tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
         if self.master_fd:
-            os.close(self.master_fd)
+            try:
+                os.close(self.master_fd)
+            except Exception:
+                pass
             self.master_fd = None
         if self.old_handler:
             signal.signal(signal.SIGWINCH, self.old_handler)
@@ -327,36 +365,16 @@ class Flooty(object):
         master_fd = self.master_fd
         assert master_fd is not None
         while data != '':
-            n = os.write(master_fd, data)
+            if master_fd < 0:
+                print('negative master_fd')
+                return
+            try:
+                n = os.write(master_fd, data)
+            except Exception as e:
+                print(e)
+                print(master_fd)
+                raise
             data = data[n:]
-
-    def master_read(self, fd):
-        '''
-        Called when there is data to be sent from the child process back to the user.
-        '''
-        data = os.read(fd, 1024)
-        flag = findlast(data, ALTERNATE_MODE_FLAGS)
-        if flag is not None:
-            if flag in START_ALTERNATE_MODE:
-                # This code is executed when the child process switches the terminal into alternate mode. The line below assumes that the user has opened vim, and writes a message.
-                # self.write_master('IEntering special mode.\x1b')
-                pass
-            elif flag in END_ALTERNATE_MODE:
-                # This code is executed when the child process switches the terminal back out of alternate mode. The line below assumes that the user has returned to the command prompt.
-                # self.write_master('echo "Leaving special mode."\r')
-                pass
-        if data:
-            self.transport("stdout", data)
-            out(data)
-
-    def stdin_read(self, fd):
-        '''
-        Called when there is data to be sent from the user/controlling terminal down to the child process.
-        '''
-        data = os.read(fd, 1024)
-        self.write_master(data)
-        if data:
-            self.transport("stdin", data)
 
 if __name__ == '__main__':
     main()
