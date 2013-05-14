@@ -36,11 +36,18 @@ import socket
 import ssl
 import json
 import atexit
-import Queue
 import optparse
+
+try:
+    import queue
+    assert queue
+except ImportError:
+    import Queue as queue
 
 CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
 
+PROTO_VERSION = '0.02'
+CLIENT = 'flootty'
 
 # The following escape codes are xterm codes.
 # See http://rtfm.etla.org/xterm/ctlseq.html for more.
@@ -98,7 +105,7 @@ def main():
 
     parser.add_option("--user",
         dest="user",
-        default=settings.get('user'),
+        default=settings.get('username'),
         help="your username")
 
     parser.add_option("--secret",
@@ -118,15 +125,23 @@ def main():
 
     parser.add_option("--join",
         dest="join",
-        help="the room to join")
+        help="the terminal name to join")
+
+    parser.add_option("--create",
+        dest="create",
+        help="the terminal name to create")
+
+    parser.add_option("--room",
+        dest="room",
+        help="the room name")
+
+    parser.add_option("--owner",
+        dest="owner",
+        help="the room owner")
 
     parser.add_option("--list",
         dest="list",
         help="list all ptys in the room")
-
-    parser.add_option("--create",
-        dest="create",
-        help="create a new flootty")
 
     options, args = parser.parse_args()
 
@@ -151,24 +166,30 @@ class FD(object):
 
 class Flooty(object):
     '''
-    This class does the actual work of the pseudo terminal. The spawn() function is the main entrypoint.
     '''
 
     def __init__(self, options):
         self.master_fd = None
         self.old_handler = None
         self.mode = None
-        self.host = options.host
-        self.port = options.port
+
         self.fds = {}
         self.readers = set()
         self.writers = set()
         self.errers = set()
         self.empty_selects = 0
-        self.buf_out = Queue.Queue()
+
+        self.buf_out = queue.Queue()
+        self.buf_in = ''
+
+        self.host = options.host
+        self.port = options.port
+        self.room = options.room
+        self.owner = options.owner
         self.options = options
-        self.finished_startup = False
-        self.buf_in = []
+
+        self.authed = False
+        self.term_id = None
 
     def add_fd(self, fileno, **kwargs):
         print("adding fd %s kwargs %s" % (fileno, kwargs))
@@ -189,8 +210,9 @@ class Flooty(object):
             print("adding %s to the errers" % fileno)
             self.errers.add(fileno)
 
-    def transport(self, name, data=""):
-        self.buf_out.put({"name": name, "data": data}, True)
+    def transport(self, name, data):
+        data['name'] = name
+        self.buf_out.put(data, True)
 
     def select(self):
         '''
@@ -230,18 +252,74 @@ class Flooty(object):
                 break
         if buf:
             self.empty_selects = 0
-            self.handle_buf_in(buf)
+            self.handle(buf)
         else:
             self.empty_selects += 1
             if self.empty_selects > 10:
                 err('No data from sock.recv() {0} times.'.format(self.empty_selects))
                 return self.reconnect()
 
+    def handle(self, req):
+        self.buf_in += req
+        while True:
+            before, sep, after = self.buf_in.partition('\n')
+            if not sep:
+                break
+            try:
+                data = json.loads(before)
+            except Exception as e:
+                out('Unable to parse json:', e)
+                raise e
+            self.handle_event(data)
+            self.buf_in = after
+
+    def handle_event(self, data):
+        name = data.get('name')
+        if not name:
+            return out('no name in data?!?')
+        func = getattr(self, "on_%s" % (name))
+        if not func:
+            return out('unknown name!', name, 'data:', data)
+        func(data)
+
+    def on_room_info(self, ri):
+        self.authed = True
+        if self.options.create:
+            self.transport('create_term', {'name': self.options.create})
+            self.create_term()
+        else:
+            for term_id, term in ri['terms'].items():
+                if term['name'] == self.options.join:
+                    self.term_id = term_id
+            if self.term_id is None:
+                out('No terminal with name %s' % self.options.join)
+                sys.exit(1)
+            self.join_term()
+
+    def on_create_term(self, data):
+        self.term_id = data.get('id')
+
+    def on_term_stdin(self, data):
+        if not self.options.create:
+            out('omg got a stdin event but we should never get one')
+            return
+        if data.get('id') != self.term_id:
+            return
+        self.handle_stdio(data['data'])
+
+    def on_term_stdout(self, data):
+        if not self.options.join:
+            out('omg got a stdout event but we should never get one')
+            return
+        if data.get('id') != self.term_id:
+            return
+        self.handle_stdio(data['data'])
+
     def cloud_write(self, fd):
         while True:
             try:
                 item = self.buf_out.get_nowait()
-            except Queue.Empty:
+            except queue.Empty:
                 break
             else:
                 self.sock.sendall(json.dumps(item) + '\n')
@@ -252,6 +330,18 @@ class Flooty(object):
     def reconnect(self):
         out('not reconnecting\n')
         sys.exit()
+
+    def send_auth(self):
+        self.buf_out = queue.Queue()
+        self.transport('auth', {
+            'username': self.options.user,
+            'secret': self.options.secret,
+            'room': self.room,
+            'room_owner': self.owner,
+            'client': CLIENT,
+            'platform': sys.platform,
+            'version': PROTO_VERSION
+        })
 
     def connect_to_internet(self):
         self.empty_selects = 0
@@ -266,22 +356,16 @@ class Flooty(object):
             self.reconnect()
         self.sock.setblocking(0)
         out('Connected!\n')
+        self.send_auth()
         self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err)
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
 
     def get_list(self):
-        self.transport("list")
+        self.transport("list", {})
 
     def startup(self):
         if self.options.list:
             return self.get_list()
-
-        if self.options.create:
-            self.transport('create_pty', {'name': self.options.create})
-            self.create_term()
-        else:
-            self.join_term()
-
         self.connect_to_internet()
         self.select()
 
@@ -299,10 +383,10 @@ class Flooty(object):
         def ship_stdin(fd):
             data = os.read(fd, 1024)
             if data:
-                self.transport("stdin", data)
+                self.transport("term_stdin", {'data': data, 'id': self.term_id})
 
         self.add_fd(stdin, reader=ship_stdin)
-        self.handle_buf_in = lambda buf: sys.stdout.write(buf)
+        self.handle_stdio = lambda buf: sys.stdout.write(buf)
 
     def create_term(self):
         '''
@@ -319,12 +403,12 @@ class Flooty(object):
             os.execlp(shell, shell)
 
         self.old_handler = signal.signal(signal.SIGWINCH, self._signal_winch)
-        try:
-            self.mode = tty.tcgetattr(pty.STDIN_FILENO)
-            tty.setraw(pty.STDIN_FILENO)
-        # This is the same as termios.error
-        except tty.error:
-            pass
+        # try:
+        #     self.mode = tty.tcgetattr(pty.STDIN_FILENO)
+        #     tty.setraw(pty.STDIN_FILENO)
+        # # This is the same as termios.error
+        # except tty.error:
+        #     pass
 
         self._set_pty_size()
 
@@ -334,24 +418,13 @@ class Flooty(object):
             '''
             data = os.read(fd, 1024)
             if data:
-                self.transport("stdout", data)
+                self.transport("term_stdout", {'data': data, 'id': self.term_id})
                 out(data)
 
         self.add_fd(self.master_fd, reader=stdout_write)
 
-        def stdin_read(fd):
-            '''
-            Called when there is data to be sent from the user/controlling terminal down to the child process.
-            '''
-            data = os.read(fd, 1024)
-            while data != '':
-                n = os.write(master_fd, data)
-                data = data[n:]
-            if data:
-                self.transport("stdin", data)
-
-        self.add_fd(pty.STDIN_FILENO, reader=stdin_read)
-        self.handle_buf_in = out
+        # WRITE ME TO STDIN
+        self.handle_stdio = out
 
     def cleanup(self):
         mode = getattr(self, 'mode')
