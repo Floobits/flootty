@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 var net = require('net');
-var _ = require('underscore');
 var util = require('util');
 var events = require("events");
+
+var _ = require('underscore');
+
 
 var TTYServer = function(){
   var self = this;
@@ -13,15 +15,17 @@ var TTYServer = function(){
 
   self.server = net.createServer(function(conn){
     var number = self.number++,
-      ptyconn = new PTYConn(self, number, conn);
+
+    ptyconn = new PTYConn(self, number, conn);
 
     ptyconn.on('list', function(event){
       conn.write(JSON.stringify(self.conns));
     });
 
-    ptyconn.on('create_pty', self.create_pty.bind(self));
+    ptyconn.on('create_pty', self.create_pty.bind(self, ptyconn));
 
     ptyconn.on('stdout', self.broadcast.bind(self));
+    ptyconn.on('stdin', self.send_stdin.bind(self));
     self.conns[number] = ptyconn;
 
   });
@@ -29,6 +33,13 @@ var TTYServer = function(){
 };
 
 util.inherits(TTYServer, events.EventEmitter);
+
+TTYServer.prototype.send_stdin = function(sender, data) {
+  var self = this;
+
+  console.log('sending stdin', data);
+  self.pty.owner.conn.write(data);
+};
 
 TTYServer.prototype.listen = function(){
   var self = this;
@@ -41,6 +52,11 @@ TTYServer.prototype.listen = function(){
 TTYServer.prototype.broadcast = function(sender, stdout){
   var self = this;
 
+  if (sender !== self.pty.owner) {
+    console.log('this dude is not the owner!');
+    return;
+  }
+
   _.each(self.conns, function(conn, number){
     if (number == sender.id){
       return;
@@ -51,11 +67,14 @@ TTYServer.prototype.broadcast = function(sender, stdout){
   console.log('got stdout', stdout);
 };
 
-TTYServer.prototype.create_pty = function(event){
+TTYServer.prototype.create_pty = function(sender,  event){
   var self = this;
 
-  var pty = new PTY(name, owner);
-
+  if (self.pty) {
+    console.log("OMG ONLY ONE PTY ALLOWED");
+    return;
+  }
+  self.pty = new PTY(event.name, sender);
 };
 
 
@@ -70,7 +89,7 @@ var PTYConn = function(server, id, conn){
   self.buf = "";
 
   self.conn.on('data', self.on_data.bind(self));
-  self.conn.on('end', self.on_end.bind(self));
+  self.conn.on('end', self.on_end.bind(self, server));
 };
 
 util.inherits(PTYConn, events.EventEmitter);
@@ -98,8 +117,12 @@ PTYConn.prototype.send = function (d) {
   self.conn.write(d);
 };
 
-PTYConn.prototype.on_end = function (d) {
+PTYConn.prototype.on_end = function (server) {
+  var self = this;
+
   console.log('gone');
+  self.removeAllListeners();
+  delete server.conns[self.id];
 };
 
 PTYConn.prototype.handle_msg = function (msg){

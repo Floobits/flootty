@@ -161,6 +161,7 @@ class Flooty(object):
         self.buf_in = []
 
     def add_fd(self, fileno, **kwargs):
+        print("adding fd %s kwargs %s" % (fileno, kwargs))
         try:
             fileno = fileno.fileno()
         except:
@@ -169,10 +170,13 @@ class Flooty(object):
 
         self.fds[fileno] = fd
         if fd.reader:
+            print("adding %s to the readers" % fileno)
             self.readers.add(fileno)
         if fd.writer:
+            print("adding %s to the writers" % fileno)
             self.writers.add(fileno)
         if fd.errer:
+            print("adding %s to the errers" % fileno)
             self.errers.add(fileno)
 
     def transport(self, name, data=""):
@@ -182,12 +186,15 @@ class Flooty(object):
         '''
         '''
         attrs = ('errer', 'reader', 'writer')
+
         while True:
             try:
                 _in, _out, _except = select.select(self.readers, self.writers, self.errers)
             except (IOError, OSError) as e:
+                print(e)
                 return
             except (select.error, socket.error, Exception) as e:
+                print(e)
                 # Interrupted system call.
                 if e[0] == 4:
                     continue
@@ -260,50 +267,57 @@ class Flooty(object):
             return self.get_list()
 
         if self.options.create:
-            self.fork(True)
+            self.transport('create_pty', {'name': self.options.create})
             self.spew()
         else:
-            self.fork(False)
             self.drain()
 
         self.connect_to_internet()
         self.select()
 
-    def fork(self, exec_shell):
-        assert self.master_fd is None
-        shell = os.environ['SHELL']
-
-        pid, master_fd = pty.fork()
-        self.master_fd = master_fd
-        if pid == pty.CHILD:
-            if exec_shell:
-                os.execlp(shell, shell)
-
-        self.old_handler = signal.signal(signal.SIGWINCH, self._signal_winch)
-        try:
-            self.mode = tty.tcgetattr(pty.STDIN_FILENO)
-            tty.setraw(pty.STDIN_FILENO)
-        except tty.error:    # This is the same as termios.error
-            pass
-
-        self._set_pty_size()
-
     def drain(self):
-        def print_stdout(fd):
-            '''
-            Called when there is data to be sent from the child process back to the user.
-            '''
-            out(os.read(fd, 1024))
-        self.add_fd(self.master_fd, reader=print_stdout)
+        stdout = sys.stdout.fileno()
+        tty.setraw(stdout)
+        fl = fcntl.fcntl(stdout, fcntl.F_GETFL)
+        fcntl.fcntl(stdout, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
-        # self.add_fd(pty.STDIN_FILENO, reader=reader)
-        self.handle_buf_in = self.write_master
+        stdin = sys.stdin.fileno()
+        tty.setraw(stdin)
+        fl = fcntl.fcntl(stdin, fcntl.F_GETFL)
+        fcntl.fcntl(stdin, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+        def ship_stdin(fd):
+            data = os.read(fd, 1024)
+            if data:
+                self.transport("stdin", data)
+
+        self.add_fd(stdin, reader=ship_stdin)
+        self.handle_buf_in = lambda buf: sys.stdout.write(buf)
 
     def spew(self):
         '''
         Create a spawned process.
         Based on the code for pty.spawn().
         '''
+
+        assert self.master_fd is None
+        shell = os.environ['SHELL']
+
+        pid, master_fd = pty.fork()
+        self.master_fd = master_fd
+        if pid == pty.CHILD:
+            os.execlp(shell, shell)
+
+        self.old_handler = signal.signal(signal.SIGWINCH, self._signal_winch)
+        try:
+            self.mode = tty.tcgetattr(pty.STDIN_FILENO)
+            tty.setraw(pty.STDIN_FILENO)
+        # This is the same as termios.error
+        except tty.error:
+            pass
+
+        self._set_pty_size()
+
         def spew_stdout(fd):
             '''
             Called when there is data to be sent from the child process back to the user.
@@ -320,7 +334,9 @@ class Flooty(object):
             Called when there is data to be sent from the user/controlling terminal down to the child process.
             '''
             data = os.read(fd, 1024)
-            self.write_master(data)
+            while data != '':
+                n = os.write(master_fd, data)
+                data = data[n:]
             if data:
                 self.transport("stdin", data)
 
@@ -358,23 +374,6 @@ class Flooty(object):
         fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
         fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, buf)
 
-    def write_master(self, data):
-        '''
-        Writes to the child process from its controlling terminal.
-        '''
-        master_fd = self.master_fd
-        assert master_fd is not None
-        while data != '':
-            if master_fd < 0:
-                print('negative master_fd')
-                return
-            try:
-                n = os.write(master_fd, data)
-            except Exception as e:
-                print(e)
-                print(master_fd)
-                raise
-            data = data[n:]
 
 if __name__ == '__main__':
     main()
