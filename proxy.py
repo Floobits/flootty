@@ -422,20 +422,10 @@ class Flooty(object):
         assert self.master_fd is None
         shell = os.environ['SHELL']
 
-        environ = copy.deepcopy(os.environ)
-        import subprocess
-        try:
-            environ['PS1'] = subprocess.check_output(['echo', '$PS1'], shell=True)
-        except subprocess.CalledProcessError:
-            environ['PS1'] = "\\[\\e]0;\\u@\\h: \\w\\a\\]$"
-
-        environ['FLOOBITS_INFO'] = '%s::%s::%s' % (self.owner, self.room, self.options.create)
-        environ['PS1'] = '%s::%s::%s %s' % (self.owner, self.room, self.options.create, environ['PS1'])
-
         pid, master_fd = pty.fork()
         self.master_fd = master_fd
         if pid == pty.CHILD:
-            os.execlpe(shell, shell, '--login', environ)
+            os.execlp(shell, shell, '--login')
 
         self.orig_stdin_atts = tty.tcgetattr(pty.STDIN_FILENO)
         tty.setraw(pty.STDIN_FILENO)
@@ -474,6 +464,8 @@ class Flooty(object):
                     pass
 
         self.handle_stdio = net_stdin_write
+        set_prompt_command = 'PS1="%s::%s::%s $PS1"\n' % (self.owner, self.room, self.options.create)
+        net_stdin_write(set_prompt_command)
 
     def cleanup(self):
         if self.orig_stdout_atts:
