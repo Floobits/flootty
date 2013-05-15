@@ -24,19 +24,19 @@
 # THE SOFTWARE.
 
 import array
+import atexit
 import fcntl
+import json
+import optparse
 import os
 import pty
 import select
 import signal
+import socket
+import ssl
 import sys
 import termios
 import tty
-import socket
-import ssl
-import json
-import atexit
-import optparse
 
 try:
     import queue
@@ -154,14 +154,18 @@ def main():
 
 
 class FD(object):
-    def __init__(self, fileno, reader=None, writer=None, errer=None):
+    def __init__(self, fileno, reader=None, writer=None, errer=None, name=None):
         self.fileno = fileno
         self.reader = reader
         self.writer = writer
         self.errer = errer
+        self.name = name
 
     def __getitem__(self, key):
         return getattr(self, key, None)
+
+    def __str__(self):
+        return str(self.name)
 
 
 class Flooty(object):
@@ -192,7 +196,6 @@ class Flooty(object):
         self.term_id = None
 
     def add_fd(self, fileno, **kwargs):
-        print("adding fd %s kwargs %s" % (fileno, kwargs))
         try:
             fileno = fileno.fileno()
         except:
@@ -201,13 +204,10 @@ class Flooty(object):
 
         self.fds[fileno] = fd
         if fd.reader:
-            print("adding %s to the readers" % fileno)
             self.readers.add(fileno)
         if fd.writer:
-            print("adding %s to the writers" % fileno)
             self.writers.add(fileno)
         if fd.errer:
-            print("adding %s to the errers" % fileno)
             self.errers.add(fileno)
 
     def transport(self, name, data):
@@ -220,18 +220,21 @@ class Flooty(object):
         attrs = ('errer', 'reader', 'writer')
 
         while True:
+            if self.buf_out.qsize() == 0:
+                self.writers.remove(self.sock.fileno())
             try:
-                _in, _out, _except = select.select(self.readers, self.writers, self.errers)
+                # NOTE: you will never have to write anything without reading first from a different one
+                _in, _out, _except = select.select(self.readers, self.writers, self.errers, 1)
             except (IOError, OSError) as e:
-                print(e)
-                return
+                continue
             except (select.error, socket.error, Exception) as e:
-                print(e)
                 # Interrupted system call.
                 if e[0] == 4:
                     continue
                 err('Error in select(): %s' % str(e))
                 return self.reconnect()
+            finally:
+                self.writers.add(self.sock.fileno())
 
             for position, fds in enumerate([_except, _in, _out]):
                 attr = attrs[position]
@@ -239,6 +242,8 @@ class Flooty(object):
                     handler = self.fds[fd][attr]
                     if handler:
                         handler(fd)
+                    else:
+                        raise Exception('no handler for fd: %s %s' % (fd, attr))
 
     def cloud_read(self, fd):
         buf = ''
@@ -333,6 +338,7 @@ class Flooty(object):
                 self.sock.sendall(json.dumps(item) + '\n')
 
     def cloud_err(self, err):
+        out('reconnecting because of %s' % err)
         self.reconnect()
 
     def reconnect(self):
@@ -365,7 +371,7 @@ class Flooty(object):
         self.sock.setblocking(0)
         out('Connected!\n')
         self.send_auth()
-        self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err)
+        self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err, name='net')
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
 
     def startup(self):
@@ -388,7 +394,7 @@ class Flooty(object):
             if data:
                 self.transport("term_stdin", {'data': data, 'id': self.term_id})
 
-        self.add_fd(stdin, reader=ship_stdin)
+        self.add_fd(stdin, reader=ship_stdin, name='join_term_stdin')
 
         def stdout_write(buf):
             while len(buf) > 0:
@@ -412,7 +418,7 @@ class Flooty(object):
         pid, master_fd = pty.fork()
         self.master_fd = master_fd
         if pid == pty.CHILD:
-            os.execlp(shell, shell)
+            os.execlp(shell, shell, '--login')
 
         self.old_handler = signal.signal(signal.SIGWINCH, self._signal_winch)
         try:
@@ -433,7 +439,7 @@ class Flooty(object):
                 self.transport("term_stdout", {'data': data, 'id': self.term_id})
                 out(data)
 
-        self.add_fd(self.master_fd, reader=stdout_write)
+        self.add_fd(self.master_fd, reader=stdout_write, name='create_term_stdout_write')
 
         def stdin_write(fd):
             data = os.read(fd, 1024)
@@ -444,7 +450,7 @@ class Flooty(object):
                 except (IOError, OSError):
                     pass
 
-        self.add_fd(pty.STDIN_FILENO, reader=stdin_write)
+        self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
         def net_stdin_write(buf):
             while buf and len(buf) > 0:
