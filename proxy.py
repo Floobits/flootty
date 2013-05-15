@@ -25,6 +25,7 @@
 
 import array
 import atexit
+import copy
 import fcntl
 import json
 import optparse
@@ -77,6 +78,11 @@ def out(*args):
 
 def err(*args):
     os.write(pty.STDERR_FILENO, " ".join(args))
+
+
+def die(*args):
+    err(*args)
+    sys.exit(1)
 
 
 def findlast(s, substrs):
@@ -139,12 +145,9 @@ def main():
 
     options, args = parser.parse_args()
 
-    out('\nThe dream has begun.\r\n')
     f = Flooty(options)
     atexit.register(f.cleanup)
     f.startup()
-
-    out('\nThe dream is (probably) over.\r\n')
 
 
 class FD(object):
@@ -168,9 +171,6 @@ class Flooty(object):
 
     def __init__(self, options):
         self.master_fd = None
-        self.old_handler = None
-        self.mode = None
-
         self.fds = {}
         self.readers = set()
         self.writers = set()
@@ -188,6 +188,9 @@ class Flooty(object):
 
         self.authed = False
         self.term_id = None
+
+        self.orig_stdin_atts = None
+        self.orig_stdout_atts = None
 
     def add_fd(self, fileno, **kwargs):
         try:
@@ -293,14 +296,19 @@ class Flooty(object):
                     self.term_id = int(term_id)
                     break
             if self.term_id is None:
-                out('No terminal with name %s' % self.options.join)
-                sys.exit(1)
+                die('No terminal with name %s' % self.options.join)
             self.join_term()
         elif self.options.list:
             print('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
                 print('terminal %s created by %s' % (term['name'], term['owner']))
-            sys.exit(0)
+            die()
+
+    def on_error(self, data):
+        if self.term_id is None:
+            die(data.get('msg'))
+        else:
+            out(data.get('msg'))
 
     def on_create_term(self, data):
         self.term_id = data.get('id')
@@ -308,8 +316,7 @@ class Flooty(object):
     def on_delete_term(self, data):
         if data.get('id') != self.term_id:
             return
-        out('User %s killed the terminal. Exiting.' % (data.get('username')))
-        sys.exit(0)
+        die('User %s killed the terminal. Exiting.' % (data.get('username')))
 
     def on_term_stdin(self, data):
         if not self.options.create:
@@ -341,8 +348,7 @@ class Flooty(object):
         self.reconnect()
 
     def reconnect(self):
-        out('not reconnecting\n')
-        sys.exit()
+        die('not reconnecting\n')
 
     def send_auth(self):
         self.buf_out = []
@@ -379,11 +385,13 @@ class Flooty(object):
 
     def join_term(self):
         stdout = sys.stdout.fileno()
+        self.orig_stdout_atts = tty.tcgetattr(stdout)
         tty.setraw(stdout)
         fl = fcntl.fcntl(stdout, fcntl.F_GETFL)
         fcntl.fcntl(stdout, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
         stdin = sys.stdin.fileno()
+        self.orig_stdin_atts = tty.tcgetattr(stdin)
         tty.setraw(stdin)
         fl = fcntl.fcntl(stdin, fcntl.F_GETFL)
         fcntl.fcntl(stdin, fcntl.F_SETFL, fl | os.O_NONBLOCK)
@@ -414,24 +422,26 @@ class Flooty(object):
         assert self.master_fd is None
         shell = os.environ['SHELL']
 
+        environ = copy.deepcopy(os.environ)
+        import subprocess
+        try:
+            environ['PS1'] = subprocess.check_output(['echo', '$PS1'], shell=True)
+        except subprocess.CalledProcessError:
+            environ['PS1'] = "\\[\\e]0;\\u@\\h: \\w\\a\\]$"
+
+        environ['FLOOBITS_INFO'] = '%s::%s::%s' % (self.owner, self.room, self.options.create)
+        environ['PS1'] = '%s::%s::%s %s' % (self.owner, self.room, self.options.create, environ['PS1'])
+
         pid, master_fd = pty.fork()
         self.master_fd = master_fd
         if pid == pty.CHILD:
-            os.execlp(shell, shell, '--login')
+            os.execlpe(shell, shell, '--login', environ)
 
-        self.old_handler = signal.signal(signal.SIGWINCH, self._signal_winch)
-        try:
-            self.mode = tty.tcgetattr(pty.STDIN_FILENO)
-            tty.setraw(pty.STDIN_FILENO)
-        # This is the same as termios.error
-        except tty.error:
-            pass
-
-        self._set_pty_size()
+        self.orig_stdin_atts = tty.tcgetattr(pty.STDIN_FILENO)
+        tty.setraw(pty.STDIN_FILENO)
 
         def slave_death(fd):
-            out('Exiting flootty because child exited.\r\n')
-            sys.exit(0)
+            die('Exiting flootty because child exited.\r\n')
 
         def stdout_write(fd):
             '''
@@ -466,35 +476,11 @@ class Flooty(object):
         self.handle_stdio = net_stdin_write
 
     def cleanup(self):
-        mode = getattr(self, 'mode')
-        if mode:
-            tty.tcsetattr(pty.STDIN_FILENO, tty.TCSAFLUSH, mode)
-        if self.master_fd:
-            try:
-                os.close(self.master_fd)
-            except Exception:
-                pass
-            self.master_fd = None
-        if self.old_handler:
-            signal.signal(signal.SIGWINCH, self.old_handler)
+        if self.orig_stdout_atts:
+            tty.tcsetattr(sys.stdout.fileno(), tty.TCSAFLUSH, self.orig_stdout_atts)
+        if self.orig_stdin_atts:
+            tty.tcsetattr(sys.stdin.fileno(), tty.TCSAFLUSH, self.orig_stdin_atts)
         sys.exit()
-
-    def _signal_winch(self, signum, frame):
-        '''
-        Signal handler for SIGWINCH - window size has changed.
-        '''
-        self._set_pty_size()
-
-    def _set_pty_size(self):
-        '''
-        Sets the window size of the child pty based on the window size of our own controlling terminal.
-        '''
-        assert self.master_fd is not None
-
-        # Get the terminal size of the real terminal, set it on the pseudoterminal.
-        buf = array.array('h', [0, 0, 0, 0])
-        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
-        fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, buf)
 
 
 if __name__ == '__main__':
