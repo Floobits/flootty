@@ -33,6 +33,7 @@ import select
 import socket
 import ssl
 import sys
+import termios
 import tty
 
 CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
@@ -58,7 +59,7 @@ def read_floorc():
         if e.errno == 2:
             return settings
         raise
-    data = fd.read()
+    data = fd.read().decode('utf-8')
     fd.close()
     for line in data.split('\n'):
         position = line.find(' ')
@@ -69,11 +70,11 @@ def read_floorc():
 
 
 def out(*args):
-    os.write(pty.STDOUT_FILENO, " ".join(args))
+    os.write(pty.STDOUT_FILENO, " ".join(args).encode('utf-8'))
 
 
 def err(*args):
-    os.write(pty.STDERR_FILENO, " ".join(args))
+    os.write(pty.STDERR_FILENO, " ".join(args) + '\n')
 
 
 def die(*args):
@@ -111,12 +112,12 @@ def main():
 
     parser.add_option("--host",
                       dest="host",
-                      default="localhost",
+                      default="floobits.com",
                       help="the host to connect to")
 
     parser.add_option("--port",
                       dest="port",
-                      default=3148,
+                      default=3448,
                       help="the port to connect to")
 
     parser.add_option("--join",
@@ -137,7 +138,15 @@ def main():
 
     parser.add_option("--list",
                       dest="list",
+                      default=False,
+                      action="store_true",
                       help="list all ptys in the room")
+
+    parser.add_option("--use-ssl",
+                      dest="use_ssl",
+                      default=True,
+                      action="store_false",
+                      help="for debuging only- really don't use this")
 
     options, args = parser.parse_args()
 
@@ -297,7 +306,8 @@ class Flooty(object):
         elif self.options.list:
             print('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
-                print('terminal %s created by %s' % (term['name'], term['owner']))
+                owner = str(term['owner'])
+                print('terminal %s created by %s' % (term['name'], ri['users'][owner]))
             die()
 
     def on_error(self, data):
@@ -335,7 +345,7 @@ class Flooty(object):
         while True:
             try:
                 item = self.buf_out.pop(0)
-                self.sock.sendall(json.dumps(item) + '\n')
+                self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
             except IndexError:
                 break
 
@@ -361,11 +371,15 @@ class Flooty(object):
     def connect_to_internet(self):
         self.empty_selects = 0
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #self.sock = ssl.wrap_socket(sock, ca_certs=CERT, cert_reqs=ssl.CERT_REQUIRED)
+        if self.options.use_ssl:
+            self.sock = ssl.wrap_socket(self.sock, ca_certs=CERT, cert_reqs=ssl.CERT_REQUIRED)
+        elif self.port == 3448:
+            self.port = 3148
         out('Connecting to %s:%s\r\n' % (self.host, self.port))
         try:
             self.sock.connect((self.host, self.port))
-            #self.sock.do_handshake()
+            if self.options.use_ssl:
+                self.sock.do_handshake()
         except socket.error as e:
             out('Error connecting: %s' % e)
             self.reconnect()
@@ -380,14 +394,14 @@ class Flooty(object):
         self.select()
 
     def join_term(self):
+        self.orig_stdout_atts = tty.tcgetattr(sys.stdout)
         stdout = sys.stdout.fileno()
-        self.orig_stdout_atts = tty.tcgetattr(stdout)
         tty.setraw(stdout)
         fl = fcntl.fcntl(stdout, fcntl.F_GETFL)
         fcntl.fcntl(stdout, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
+        self.orig_stdin_atts = tty.tcgetattr(sys.stdin)
         stdin = sys.stdin.fileno()
-        self.orig_stdin_atts = tty.tcgetattr(stdin)
         tty.setraw(stdin)
         fl = fcntl.fcntl(stdin, fcntl.F_GETFL)
         fcntl.fcntl(stdin, fcntl.F_SETFL, fl | os.O_NONBLOCK)
@@ -423,7 +437,7 @@ class Flooty(object):
         if pid == pty.CHILD:
             os.execlp(shell, shell, '--login')
 
-        self.orig_stdin_atts = tty.tcgetattr(pty.STDIN_FILENO)
+        self.orig_stdin_atts = tty.tcgetattr(sys.stdin)
         tty.setraw(pty.STDIN_FILENO)
 
         def slave_death(fd):
@@ -465,9 +479,12 @@ class Flooty(object):
 
     def cleanup(self):
         if self.orig_stdout_atts:
-            tty.tcsetattr(sys.stdout.fileno(), tty.TCSAFLUSH, self.orig_stdout_atts)
+            self.orig_stdout_atts[3] = self.orig_stdout_atts[3] | termios.ECHO
+            tty.tcsetattr(sys.stdout, tty.TCSAFLUSH, self.orig_stdout_atts)
         if self.orig_stdin_atts:
-            tty.tcsetattr(sys.stdin.fileno(), tty.TCSAFLUSH, self.orig_stdin_atts)
+            self.orig_stdin_atts[3] = self.orig_stdin_atts[3] | termios.ECHO
+            tty.tcsetattr(sys.stdin, tty.TCSAFLUSH, self.orig_stdin_atts)
+        print('ciao.')
         sys.exit()
 
 
