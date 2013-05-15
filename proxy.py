@@ -23,20 +23,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import array
 import atexit
-import copy
 import fcntl
 import json
 import optparse
 import os
 import pty
 import select
-import signal
 import socket
 import ssl
 import sys
-import termios
 import tty
 
 CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
@@ -104,44 +100,44 @@ def main():
     parser = optparse.OptionParser()
 
     parser.add_option("--user",
-        dest="user",
-        default=settings.get('username'),
-        help="your username")
+                      dest="user",
+                      default=settings.get('username'),
+                      help="your username")
 
     parser.add_option("--secret",
-        dest="secret",
-        default=settings.get('secret'),
-        help="your secret (apikey)")
+                      dest="secret",
+                      default=settings.get('secret'),
+                      help="your secret (apikey)")
 
     parser.add_option("--host",
-        dest="host",
-        default="localhost",
-        help="the host to connect to")
+                      dest="host",
+                      default="localhost",
+                      help="the host to connect to")
 
     parser.add_option("--port",
-        dest="port",
-        default=3148,
-        help="the port to connect to")
+                      dest="port",
+                      default=3148,
+                      help="the port to connect to")
 
     parser.add_option("--join",
-        dest="join",
-        help="the terminal name to join")
+                      dest="join",
+                      help="the terminal name to join")
 
     parser.add_option("--create",
-        dest="create",
-        help="the terminal name to create")
+                      dest="create",
+                      help="the terminal name to create")
 
     parser.add_option("--room",
-        dest="room",
-        help="the room name")
+                      dest="room",
+                      help="the room name")
 
     parser.add_option("--owner",
-        dest="owner",
-        help="the room owner")
+                      dest="owner",
+                      help="the room owner")
 
     parser.add_option("--list",
-        dest="list",
-        help="list all ptys in the room")
+                      dest="list",
+                      help="list all ptys in the room")
 
     options, args = parser.parse_args()
 
