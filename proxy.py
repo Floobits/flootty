@@ -305,12 +305,17 @@ class Flooty(object):
     def on_create_term(self, data):
         self.term_id = data.get('id')
 
+    def on_delete_term(self, data):
+        if data.get('id') != self.term_id:
+            return
+        out('User %s killed the terminal. Exiting.' % (data.get('username')))
+        sys.exit(0)
+
     def on_term_stdin(self, data):
         if not self.options.create:
             out('omg got a stdin event but we should never get one')
             return
         if data.get('id') != self.term_id:
-            out('wrong id')
             return
         self.handle_stdio(data['data'])
 
