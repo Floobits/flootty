@@ -36,18 +36,11 @@ import sys
 import termios
 import tty
 
-CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
-
 PROTO_VERSION = '0.02'
 CLIENT = 'flootty'
-
-# The following escape codes are xterm codes.
-# See http://rtfm.etla.org/xterm/ctlseq.html for more.
-START_ALTERNATE_MODE = set('\x1b[?{0}h'.format(i) for i in ('1049', '47', '1047'))
-END_ALTERNATE_MODE = set('\x1b[?{0}l'.format(i) for i in ('1049', '47', '1047'))
-ALTERNATE_MODE_FLAGS = tuple(START_ALTERNATE_MODE) + tuple(END_ALTERNATE_MODE)
-
 INITIAL_RECONNECT_DELAY = 1000
+FD_READ_BYTES = 4096
+CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
 
 
 def read_floorc():
@@ -69,16 +62,28 @@ def read_floorc():
     return settings
 
 
+def write(fd, buf):
+    while len(buf) > 0:
+        try:
+            n = os.write(fd, buf)
+            buf = buf[n:]
+        except (IOError, OSError):
+            pass
+
+
 def out(*args):
-    os.write(pty.STDOUT_FILENO, " ".join(args).encode('utf-8'))
+    buf = "%s" % " ".join(args)
+    write(pty.STDOUT_FILENO, buf)
 
 
 def err(*args):
-    os.write(pty.STDERR_FILENO, " ".join(args) + '\n')
+    buf = "%s" % " ".join(args)
+    write(pty.STDERR_FILENO, buf)
 
 
 def die(*args):
     err(*args)
+    err('\r\n')
     sys.exit(1)
 
 
@@ -233,7 +238,7 @@ class Flooty(object):
                 # Interrupted system call.
                 if e[0] == 4:
                     continue
-                err('Error in select(): %s' % str(e))
+                err('Error in select(): %s\r\n' % str(e))
                 return self.reconnect()
             finally:
                 self.writers.add(self.sock.fileno())
@@ -251,7 +256,7 @@ class Flooty(object):
         buf = ''
         while True:
             try:
-                d = self.sock.recv(4096)
+                d = self.sock.recv(FD_READ_BYTES)
                 if not d:
                     break
                 buf += d
@@ -275,7 +280,7 @@ class Flooty(object):
             try:
                 data = json.loads(before)
             except Exception as e:
-                out('Unable to parse json: %s' % str(e))
+                out('Unable to parse json: %s\r\n' % str(e))
                 raise e
             self.handle_event(data)
             self.buf_in = after
@@ -283,7 +288,7 @@ class Flooty(object):
     def handle_event(self, data):
         name = data.get('name')
         if not name:
-            return out('no name in data?!?')
+            return out('no name in data?!?\r\n')
         func = getattr(self, "on_%s" % (name), None)
         if not func:
             #out('unknown name %s data: %s' % (name, data))
@@ -326,7 +331,7 @@ class Flooty(object):
 
     def on_term_stdin(self, data):
         if not self.options.create:
-            out('omg got a stdin event but we should never get one')
+            out('omg got a stdin event but we should never get one.\r\n')
             return
         if data.get('id') != self.term_id:
             return
@@ -334,10 +339,10 @@ class Flooty(object):
 
     def on_term_stdout(self, data):
         if not self.options.join:
-            out('omg got a stdout event but we should never get one')
+            out('omg got a stdout event but we should never get one.\r\n')
             return
         if data.get('id') != self.term_id:
-            out('wrong id %s vs %s' % (data.get('id'), self.term_id))
+            out('wrong id %s vs %s.\r\n' % (data.get('id'), self.term_id))
             return
         self.handle_stdio(data['data'])
 
@@ -350,11 +355,11 @@ class Flooty(object):
                 break
 
     def cloud_err(self, err):
-        out('reconnecting because of %s' % err)
+        out('reconnecting because of %s.\r\n' % err)
         self.reconnect()
 
     def reconnect(self):
-        die('not reconnecting\n')
+        die('not reconnecting.')
 
     def send_auth(self):
         self.buf_out = []
@@ -375,13 +380,13 @@ class Flooty(object):
             self.sock = ssl.wrap_socket(self.sock, ca_certs=CERT, cert_reqs=ssl.CERT_REQUIRED)
         elif self.port == 3448:
             self.port = 3148
-        out('Connecting to %s:%s\r\n' % (self.host, self.port))
+        out('Connecting to %s:%s.\r\n' % (self.host, self.port))
         try:
             self.sock.connect((self.host, self.port))
             if self.options.use_ssl:
                 self.sock.do_handshake()
         except socket.error as e:
-            out('Error connecting: %s' % e)
+            out('Error connecting: %s.\r\n' % e)
             self.reconnect()
         self.sock.setblocking(0)
         out('Connected!\r\n')
@@ -407,19 +412,14 @@ class Flooty(object):
         fcntl.fcntl(stdin, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
         def ship_stdin(fd):
-            data = os.read(fd, 1024)
+            data = os.read(fd, FD_READ_BYTES)
             if data:
                 self.transport("term_stdin", {'data': data, 'id': self.term_id})
 
         self.add_fd(stdin, reader=ship_stdin, name='join_term_stdin')
 
         def stdout_write(buf):
-            while len(buf) > 0:
-                try:
-                    n = os.write(stdout, buf.encode('utf-8'))
-                    buf = buf[n:]
-                except (IOError, OSError):
-                    pass
+            write(stdout, buf)
 
         self.handle_stdio = stdout_write
 
@@ -441,13 +441,13 @@ class Flooty(object):
         tty.setraw(pty.STDIN_FILENO)
 
         def slave_death(fd):
-            die('Exiting flootty because child exited.\r\n')
+            die('Exiting flootty because child exited.')
 
         def stdout_write(fd):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
-            data = os.read(fd, 1024)
+            data = os.read(fd, FD_READ_BYTES)
             if data:
                 self.transport("term_stdout", {'data': data, 'id': self.term_id})
                 out(data)
@@ -455,23 +455,13 @@ class Flooty(object):
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
 
         def stdin_write(fd):
-            data = os.read(fd, 1024)
-            while data and len(data) > 0:
-                try:
-                    n = os.write(self.master_fd, data)
-                    data = data[n:]
-                except (IOError, OSError):
-                    pass
+            data = os.read(fd, FD_READ_BYTES)
+            write(self.master_fd, data)
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
         def net_stdin_write(buf):
-            while buf and len(buf) > 0:
-                try:
-                    n = os.write(self.master_fd, buf)
-                    buf = buf[n:]
-                except (IOError, OSError):
-                    pass
+            write(self.master_fd, buf)
 
         self.handle_stdio = net_stdin_write
         set_prompt_command = 'PS1="%s::%s::%s $PS1"\n' % (self.owner, self.room, self.options.create)
