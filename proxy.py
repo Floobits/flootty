@@ -38,12 +38,6 @@ import sys
 import termios
 import tty
 
-try:
-    import queue
-    assert queue
-except ImportError:
-    import Queue as queue
-
 CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
 
 PROTO_VERSION = '0.02'
@@ -183,7 +177,7 @@ class Flooty(object):
         self.errers = set()
         self.empty_selects = 0
 
-        self.buf_out = queue.Queue()
+        self.buf_out = []
         self.buf_in = ''
 
         self.host = options.host
@@ -212,7 +206,7 @@ class Flooty(object):
 
     def transport(self, name, data):
         data['name'] = name
-        self.buf_out.put(data, True)
+        self.buf_out.append(data)
 
     def select(self):
         '''
@@ -220,7 +214,7 @@ class Flooty(object):
         attrs = ('errer', 'reader', 'writer')
 
         while True:
-            if self.buf_out.qsize() == 0:
+            if len(self.buf_out) == 0:
                 self.writers.remove(self.sock.fileno())
             try:
                 # NOTE: you will never have to write anything without reading first from a different one
@@ -332,11 +326,10 @@ class Flooty(object):
     def cloud_write(self, fd):
         while True:
             try:
-                item = self.buf_out.get_nowait()
-            except queue.Empty:
-                break
-            else:
+                item = self.buf_out.pop(0)
                 self.sock.sendall(json.dumps(item) + '\n')
+            except IndexError:
+                break
 
     def cloud_err(self, err):
         out('reconnecting because of %s' % err)
@@ -347,7 +340,7 @@ class Flooty(object):
         sys.exit()
 
     def send_auth(self):
-        self.buf_out = queue.Queue()
+        self.buf_out = []
         self.transport('auth', {
             'username': self.options.user,
             'secret': self.options.secret,
@@ -432,7 +425,7 @@ class Flooty(object):
         self._set_pty_size()
 
         def slave_death(fd):
-            out('child died probably')
+            out('Exiting flootty because child exited.\r\n')
             sys.exit(0)
 
         def stdout_write(fd):
