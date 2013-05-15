@@ -87,20 +87,6 @@ def die(*args):
     sys.exit(1)
 
 
-def findlast(s, substrs):
-    '''
-    Finds whichever of the given substrings occurs last in the given string and returns that substring, or returns None if no such strings occur.
-    '''
-    i = -1
-    result = None
-    for substr in substrs:
-        pos = s.rfind(substr)
-        if pos > i:
-            i = pos
-            result = substr
-    return result
-
-
 def main():
     settings = read_floorc()
     parser = optparse.OptionParser()
