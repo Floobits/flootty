@@ -37,12 +37,34 @@ import sys
 import termios
 import tty
 import signal
+import time
+from collections import defaultdict
 
 PROTO_VERSION = '0.02'
 CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 4096
 CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
+TIMEOUTS = defaultdict(list)
+
+
+def set_timeout(func, timeout=None, *args, **kwargs):
+    if timeout is None:
+        timeout = 0
+    then = time.time() + (timeout / 1000.0)
+    TIMEOUTS[then].append(lambda: func(*args, **kwargs))
+
+
+def call_timeouts():
+    now = time.time()
+    to_remove = []
+    for t, timeouts in TIMEOUTS.items():
+        if now >= t:
+            for timeout in timeouts:
+                timeout()
+            to_remove.append(t)
+    for k in to_remove:
+        del TIMEOUTS[k]
 
 
 def read_floorc():
@@ -217,11 +239,13 @@ class Flooty(object):
         attrs = ('errer', 'reader', 'writer')
 
         while True:
+            call_timeouts()
+
             if len(self.buf_out) == 0:
                 self.writers.remove(self.sock.fileno())
             try:
                 # NOTE: you will never have to write anything without reading first from a different one
-                _in, _out, _except = select.select(self.readers, self.writers, self.errers, 1)
+                _in, _out, _except = select.select(self.readers, self.writers, self.errers, 0.2)
             except (IOError, OSError) as e:
                 continue
             except (select.error, socket.error, Exception) as e:
@@ -300,22 +324,21 @@ class Flooty(object):
     def on_room_info(self, ri):
         self.authed = True
         if self.options.create:
-            self.transport('create_term', {'term_name': self.options.create})
-            self.create_term()
+            return self.transport('create_term', {'term_name': self.options.create})
         elif self.options.join:
             for term_id, term in ri['terms'].items():
-                if term['name'] == self.options.join:
+                if term['term_name'] == self.options.join:
                     self.term_id = int(term_id)
                     break
             if self.term_id is None:
                 die('No terminal with name %s' % self.options.join)
-            self.join_term()
+            return self.join_term()
         elif self.options.list:
             print('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
                 owner = str(term['owner'])
-                print('terminal %s created by %s' % (term['name'], ri['users'][owner]))
-            die()
+                print('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
+            return die()
 
     def on_error(self, data):
         if self.term_id is None:
@@ -324,7 +347,10 @@ class Flooty(object):
             out(data.get('msg'))
 
     def on_create_term(self, data):
+        if data.get('term_name') != self.options.create:
+            return
         self.term_id = data.get('id')
+        self.create_term()
 
     def on_delete_term(self, data):
         if data.get('id') != self.term_id:
@@ -423,9 +449,9 @@ class Flooty(object):
         assert self.master_fd is None
         shell = os.environ['SHELL']
 
-        pid, master_fd = pty.fork()
+        self.child_pid, master_fd = pty.fork()
         self.master_fd = master_fd
-        if pid == pty.CHILD:
+        if self.child_pid == pty.CHILD:
             os.execlp(shell, shell, '--login')
 
         self.orig_stdin_atts = tty.tcgetattr(sys.stdin)
