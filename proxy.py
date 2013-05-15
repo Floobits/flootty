@@ -284,7 +284,8 @@ class Flooty(object):
             return out('no name in data?!?')
         func = getattr(self, "on_%s" % (name), None)
         if not func:
-            return out('unknown name %s data: %s' % (name, data))
+            #out('unknown name %s data: %s' % (name, data))
+            return
         func(data)
 
     def on_room_info(self, ri):
@@ -399,7 +400,7 @@ class Flooty(object):
         def stdout_write(buf):
             while len(buf) > 0:
                 try:
-                    n = os.write(stdout, buf)
+                    n = os.write(stdout, buf.encode('utf-8'))
                     buf = buf[n:]
                 except (IOError, OSError):
                     pass
@@ -430,6 +431,10 @@ class Flooty(object):
 
         self._set_pty_size()
 
+        def slave_death(fd):
+            out('child died probably')
+            sys.exit(0)
+
         def stdout_write(fd):
             '''
             Called when there is data to be sent from the child process back to the user.
@@ -439,7 +444,7 @@ class Flooty(object):
                 self.transport("term_stdout", {'data': data, 'id': self.term_id})
                 out(data)
 
-        self.add_fd(self.master_fd, reader=stdout_write, name='create_term_stdout_write')
+        self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
 
         def stdin_write(fd):
             data = os.read(fd, 1024)
