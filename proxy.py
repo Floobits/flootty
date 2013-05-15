@@ -145,12 +145,12 @@ def main():
 
     options, args = parser.parse_args()
 
-    out('\nThe dream has begun.\n')
+    out('\nThe dream has begun.\r\n')
     f = Flooty(options)
     atexit.register(f.cleanup)
     f.startup()
 
-    out('\nThe dream is (probably) over.\n')
+    out('\nThe dream is (probably) over.\r\n')
 
 
 class FD(object):
@@ -362,7 +362,7 @@ class Flooty(object):
         self.empty_selects = 0
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #self.sock = ssl.wrap_socket(sock, ca_certs=CERT, cert_reqs=ssl.CERT_REQUIRED)
-        out('Connecting to %s:%s\n' % (self.host, self.port))
+        out('Connecting to %s:%s\r\n' % (self.host, self.port))
         try:
             self.sock.connect((self.host, self.port))
             #self.sock.do_handshake()
@@ -370,7 +370,7 @@ class Flooty(object):
             out('Error connecting: %s' % e)
             self.reconnect()
         self.sock.setblocking(0)
-        out('Connected!\n')
+        out('Connected!\r\n')
         self.send_auth()
         self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err, name='net')
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
