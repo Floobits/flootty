@@ -27,6 +27,7 @@ import atexit
 import fcntl
 import json
 import optparse
+import array
 import os
 import pty
 import select
@@ -35,6 +36,7 @@ import ssl
 import sys
 import termios
 import tty
+import signal
 
 PROTO_VERSION = '0.02'
 CLIENT = 'flootty'
@@ -65,6 +67,7 @@ def read_floorc():
 def write(fd, buf):
     while len(buf) > 0:
         try:
+            # TODO: fix this for python3
             n = os.write(fd, buf)
             buf = buf[n:]
         except (IOError, OSError):
@@ -167,6 +170,7 @@ class Flooty(object):
 
     def __init__(self, options):
         self.master_fd = None
+        self.original_wincher = None
         self.fds = {}
         self.readers = set()
         self.writers = set()
@@ -257,6 +261,18 @@ class Flooty(object):
                 err('No data from sock.recv() {0} times.'.format(self.empty_selects))
                 return self.reconnect()
 
+    def cloud_write(self, fd):
+        while True:
+            try:
+                item = self.buf_out.pop(0)
+                self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
+            except IndexError:
+                break
+
+    def cloud_err(self, err):
+        out('reconnecting because of %s.\r\n' % err)
+        self.reconnect()
+
     def handle(self, req):
         self.buf_in += req
         while True:
@@ -264,7 +280,7 @@ class Flooty(object):
             if not sep:
                 break
             try:
-                data = json.loads(before)
+                data = json.loads(before, encoding='utf-8')
             except Exception as e:
                 out('Unable to parse json: %s\r\n' % str(e))
                 raise e
@@ -332,18 +348,6 @@ class Flooty(object):
             return
         self.handle_stdio(data['data'])
 
-    def cloud_write(self, fd):
-        while True:
-            try:
-                item = self.buf_out.pop(0)
-                self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
-            except IndexError:
-                break
-
-    def cloud_err(self, err):
-        out('reconnecting because of %s.\r\n' % err)
-        self.reconnect()
-
     def reconnect(self):
         die('not reconnecting.')
 
@@ -405,7 +409,8 @@ class Flooty(object):
         self.add_fd(stdin, reader=ship_stdin, name='join_term_stdin')
 
         def stdout_write(buf):
-            write(stdout, buf)
+            #UnicodeEncodeError: 'ascii' codec can't encode character u'\u2014' in position 37: ordinal not in range(128)
+            write(stdout, buf.encode('utf-8'))
 
         self.handle_stdio = stdout_write
 
@@ -425,6 +430,8 @@ class Flooty(object):
 
         self.orig_stdin_atts = tty.tcgetattr(sys.stdin)
         tty.setraw(pty.STDIN_FILENO)
+        self.original_wincher = signal.signal(signal.SIGWINCH, self._signal_winch)
+        self._set_pty_size()
 
         def slave_death(fd):
             die('Exiting flootty because child exited.')
@@ -450,8 +457,31 @@ class Flooty(object):
             write(self.master_fd, buf)
 
         self.handle_stdio = net_stdin_write
-        set_prompt_command = 'PS1="%s::%s::%s $PS1"\n' % (self.owner, self.room, self.options.create)
+        color_start = '\\[\\e[32m\\]'
+        color_reset = '\\[\\033[0m\\]'
+
+        if 'zsh' in shell:
+            color_start = "%{%F{green}%}"
+            color_reset = ""
+        set_prompt_command = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.options.create, color_reset)
         net_stdin_write(set_prompt_command)
+
+    def _signal_winch(self, signum, frame):
+        '''
+        Signal handler for SIGWINCH - window size has changed.
+        '''
+        self._set_pty_size()
+
+    def _set_pty_size(self):
+        '''
+        Sets the window size of the child pty based on the window size of our own controlling terminal.
+        '''
+        assert self.master_fd is not None
+
+        # Get the terminal size of the real terminal, set it on the pseudoterminal.
+        buf = array.array('h', [0, 0, 0, 0])
+        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
+        fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, buf)
 
     def cleanup(self):
         if self.orig_stdout_atts:
@@ -460,9 +490,10 @@ class Flooty(object):
         if self.orig_stdin_atts:
             self.orig_stdin_atts[3] = self.orig_stdin_atts[3] | termios.ECHO
             tty.tcsetattr(sys.stdin, tty.TCSAFLUSH, self.orig_stdin_atts)
+        if self.original_wincher:
+            signal.signal(signal.SIGWINCH, self.original_wincher)
         print('ciao.')
         sys.exit()
-
 
 if __name__ == '__main__':
     main()
