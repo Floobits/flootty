@@ -438,6 +438,7 @@ class Flootty(object):
 
     def on_room_info(self, ri):
         self.authed = True
+        self.ri = ri
         if self.options.create:
             return self.transport('create_term', {'term_name': self.term_name})
         elif self.options.list:
@@ -557,7 +558,11 @@ class Flootty(object):
             if data:
                 self.transport("term_stdin", {'data': data, 'id': self.term_id})
 
-        self.add_fd(stdin, reader=ship_stdin, name='join_term_stdin')
+        if 'term_stdin' in self.ri['perms']:
+            out('You have permission to write to this terminal. Remember: With great power comes great responsibility.')
+            self.add_fd(stdin, reader=ship_stdin, name='join_term_stdin')
+        else:
+            out('You do not have permission to write to this terminal.')
 
         def stdout_write(buf):
             write(stdout, buf.encode('utf-8'))
@@ -627,6 +632,7 @@ class Flootty(object):
         if 'zsh' in shell:
             color_start = "%{%F{green}%}"
             color_reset = ""
+
         set_prompt_command = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
         net_stdin_write(set_prompt_command)
 
