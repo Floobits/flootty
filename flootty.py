@@ -515,6 +515,7 @@ class Flooty(object):
         color_start = '\\[\\e[32m\\]'
         color_reset = '\\[\\033[0m\\]'
 
+        # TODO: other shells probably use weird color escapes
         if 'zsh' in shell:
             color_start = "%{%F{green}%}"
             color_reset = ""
