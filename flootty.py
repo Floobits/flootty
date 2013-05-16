@@ -144,14 +144,14 @@ def read_floorc():
     return settings
 
 
-def write(fd, buf):
-    while len(buf) > 0:
+def write(fd, b):
+    while len(b):
         try:
             # TODO: fix this for python3
-            n = os.write(fd, buf)
-            buf = buf[n:]
+            n = os.write(fd, b)
+            b = b[n:]
         except (IOError, OSError):
-            break
+            pass
 
 
 def read(fd):
