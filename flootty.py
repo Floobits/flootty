@@ -39,7 +39,14 @@ import termios
 import tty
 import signal
 import time
+import re
 from collections import defaultdict
+
+try:
+    from urllib.parse import urlparse
+    assert urlparse
+except ImportError:
+    from urlparse import urlparse
 
 
 CA_CERT = '''-----BEGIN CERTIFICATE-----
@@ -94,6 +101,9 @@ INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 4096
 CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
 TIMEOUTS = defaultdict(list)
+SELECT_TIMEOUT = .2
+# in secs
+NET_TIMEOUT = 10
 
 
 def set_timeout(func, timeout=None, *args, **kwargs):
@@ -149,9 +159,9 @@ def read(fd):
     print(fd)
     while True:
         try:
-            # out('trying to read %s ...\r\n' % fd)
+            # out('trying to read %s ...' % fd)
             d = os.read(fd, FD_READ_BYTES)
-            # out('read %s bytes\r\n' % (len(d)))
+            # out('read %s bytes' % (len(d)))
             if not d or d == '':
                 break
             buf += d
@@ -162,12 +172,12 @@ def read(fd):
 
 
 def out(*args):
-    buf = "%s" % " ".join(args)
+    buf = "%s\r\n" % " ".join(args)
     write(pty.STDOUT_FILENO, buf)
 
 
 def err(*args):
-    buf = "%s" % " ".join(args)
+    buf = "%s\r\n" % " ".join(args)
     write(pty.STDERR_FILENO, buf)
 
 
@@ -177,12 +187,39 @@ def die(*args):
     sys.exit(1)
 
 
+def parse_url(room_url):
+    secure = True
+    owner = None
+    room_name = None
+    parsed_url = urlparse(room_url)
+    port = parsed_url.port
+    if not port:
+        port = 3448
+    if parsed_url.scheme == 'http':
+        if not port:
+            port = 3148
+        secure = False
+    result = re.match('^/r/([-\w]+)/([-\w]+)/?$', parsed_url.path)
+    if result:
+        (owner, room_name) = result.groups()
+    else:
+        raise ValueError('%s is not a valid Floobits URL' % room_url)
+    return {
+        'host': parsed_url.hostname,
+        'owner': owner,
+        'port': port,
+        'room': room_name,
+        'secure': secure,
+    }
+
+
 def main():
     settings = read_floorc()
-    parser = optparse.OptionParser()
+    usage = "usage: %prog  --room=ROOM --owner=OWNER [options] term_name.\n\n\tSee https://github.com/Floobits/flootty"
+    parser = optparse.OptionParser(usage=usage)
 
-    parser.add_option("--user",
-                      dest="user",
+    parser.add_option("--username",
+                      dest="username",
                       default=settings.get('username'),
                       help="your username")
 
@@ -229,9 +266,30 @@ def main():
 
     options, args = parser.parse_args()
 
-    f = Flooty(options)
+    term_name = args and args[0] or ""
+
+    if not options.room and not options.owner:
+        try:
+            floo = json.loads(open('.floo', 'rb').read().decode('utf-8'))
+            floo = parse_url(floo['url'])
+            options.room = floo['room']
+            options.owner = floo['owner']
+            options.port = floo['port']
+            options.host = floo['host']
+        except Exception:
+            pass
+
+    if options.list:
+        if len(term_name) != 0:
+            die("I don't understand why you gave me a positional argument.")
+
+    for opt in ['room', 'owner', 'username', 'secret']:
+        if not getattr(options, opt):
+            parser.error('%s not given' % opt)
+
+    f = Flootty(options, term_name)
     atexit.register(f.cleanup)
-    f.startup()
+    f.connect_to_internet()
 
 
 class FD(object):
@@ -249,10 +307,10 @@ class FD(object):
         return str(self.name)
 
 
-class Flooty(object):
+class Flootty(object):
     '''Mostly OK at sharing a shell'''
 
-    def __init__(self, options):
+    def __init__(self, options, term_name):
         self.master_fd = None
         self.original_wincher = None
         self.fds = {}
@@ -265,14 +323,14 @@ class Flooty(object):
         self.buf_in = ''
 
         self.host = options.host
-        self.port = options.port
+        self.port = int(options.port)
         self.room = options.room
         self.owner = options.owner
         self.options = options
+        self.term_name = term_name
 
         self.authed = False
         self.term_id = None
-
         self.orig_stdin_atts = None
         self.orig_stdout_atts = None
 
@@ -307,14 +365,14 @@ class Flooty(object):
                 self.writers.remove(self.sock.fileno())
             try:
                 # NOTE: you will never have to write anything without reading first from a different one
-                _in, _out, _except = select.select(self.readers, self.writers, self.errers, 0.2)
+                _in, _out, _except = select.select(self.readers, self.writers, self.errers, SELECT_TIMEOUT)
             except (IOError, OSError) as e:
                 continue
             except (select.error, socket.error, Exception) as e:
                 # Interrupted system call.
                 if e[0] == 4:
                     continue
-                err('Error in select(): %s\r\n' % str(e))
+                err('Error in select(): %s' % str(e))
                 return self.reconnect()
             finally:
                 self.writers.add(self.sock.fileno())
@@ -343,7 +401,7 @@ class Flooty(object):
             self.handle(buf)
         else:
             self.empty_selects += 1
-            if self.empty_selects > 10:
+            if int(self.empty_selects * SELECT_TIMEOUT) > NET_TIMEOUT:
                 err('No data from sock.recv() {0} times.'.format(self.empty_selects))
                 return self.reconnect()
 
@@ -356,7 +414,7 @@ class Flooty(object):
                 break
 
     def cloud_err(self, err):
-        out('reconnecting because of %s.\r\n' % err)
+        out('reconnecting because of %s' % err)
         self.reconnect()
 
     def handle(self, req):
@@ -368,7 +426,7 @@ class Flooty(object):
             try:
                 data = json.loads(before, encoding='utf-8')
             except Exception as e:
-                out('Unable to parse json: %s\r\n' % str(e))
+                out('Unable to parse json: %s' % str(e))
                 raise e
             self.handle_event(data)
             self.buf_in = after
@@ -376,7 +434,7 @@ class Flooty(object):
     def handle_event(self, data):
         name = data.get('name')
         if not name:
-            return out('no name in data?!?\r\n')
+            return out('no name in data?!?')
         func = getattr(self, "on_%s" % (name), None)
         if not func:
             #out('unknown name %s data: %s' % (name, data))
@@ -386,21 +444,29 @@ class Flooty(object):
     def on_room_info(self, ri):
         self.authed = True
         if self.options.create:
-            return self.transport('create_term', {'term_name': self.options.create})
-        elif self.options.join:
-            for term_id, term in ri['terms'].items():
-                if term['term_name'] == self.options.join:
-                    self.term_id = int(term_id)
-                    break
-            if self.term_id is None:
-                die('No terminal with name %s' % self.options.join)
-            return self.join_term()
+            return self.transport('create_term', {'term_name': self.term_name})
         elif self.options.list:
             print('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
                 owner = str(term['owner'])
                 print('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
             return die()
+        elif not self.term_name:
+            if len(ri['terms']) == 1:
+                term_id, term = ri['terms'].items()[0]
+                self.term_id = int(term_id)
+                self.term_name = term['term_name']
+            if not self.term_name:
+                die('There is no active terminal in this room. You can make one with the --create []flag.')
+        else:
+            for term_id, term in ri['terms'].items():
+                if term['term_name'] == self.term_name:
+                    self.term_id = int(term_id)
+                    break
+
+        if self.term_id is None:
+            die('No terminal with name %s' % self.term_name)
+        return self.join_term()
 
     def on_error(self, data):
         if self.term_id is None:
@@ -409,7 +475,7 @@ class Flooty(object):
             out(data.get('msg'))
 
     def on_create_term(self, data):
-        if data.get('term_name') != self.options.create:
+        if data.get('term_name') != self.term_name:
             return
         self.term_id = data.get('id')
         self.create_term()
@@ -423,15 +489,12 @@ class Flooty(object):
         if data.get('id') != self.term_id:
             return
         if not self.options.create:
-            out('omg got a stdin event but we should never get one.\r\n')
+            out('omg got a stdin event but we should never get one.')
             return
         self.handle_stdio(data['data'])
 
     def on_term_stdout(self, data):
         if data.get('id') != self.term_id:
-            return
-        if not self.options.join:
-            out('omg got a stdout event but we should never get one.\r\n')
             return
         self.handle_stdio(data['data'])
 
@@ -441,7 +504,7 @@ class Flooty(object):
     def send_auth(self):
         self.buf_out = []
         self.transport('auth', {
-            'username': self.options.user,
+            'username': self.options.username,
             'secret': self.options.secret,
             'room': self.room,
             'room_owner': self.owner,
@@ -460,22 +523,19 @@ class Flooty(object):
             self.sock = ssl.wrap_socket(self.sock, ca_certs=self.cert_fd.name, cert_reqs=ssl.CERT_REQUIRED)
         elif self.port == 3448:
             self.port = 3148
-        out('Connecting to %s:%s.\r\n' % (self.host, self.port))
+        out('Connecting to %s:%s.' % (self.host, self.port))
         try:
             self.sock.connect((self.host, self.port))
             if self.options.use_ssl:
                 self.sock.do_handshake()
         except socket.error as e:
-            out('Error connecting: %s.\r\n' % e)
+            out('Error connecting: %s.' % e)
             self.reconnect()
         self.sock.setblocking(0)
-        out('Connected!\r\n')
+        out('Connected!')
         self.send_auth()
         self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err, name='net')
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
-
-    def startup(self):
-        self.connect_to_internet()
         self.select()
 
     def join_term(self):
@@ -546,7 +606,7 @@ class Flooty(object):
                         die('not a valid utf-8 string: %s' % self.extra_data)
                 if data:
                     self.transport("term_stdout", {'data': data, 'id': self.term_id})
-                    out(data)
+                    write(pty.STDOUT_FILENO, data)
 
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
 
@@ -567,7 +627,7 @@ class Flooty(object):
         if 'zsh' in shell:
             color_start = "%{%F{green}%}"
             color_reset = ""
-        set_prompt_command = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.options.create, color_reset)
+        set_prompt_command = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
         net_stdin_write(set_prompt_command)
 
     def _signal_winch(self, signum, frame):
@@ -595,12 +655,6 @@ class Flooty(object):
         fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
         buf[0] -= 1
         fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
-
-    def on_join(self, data):
-        # hack to get a prompt on the other end (or a quick redraw)
-        if self.options.create:
-            #self._term_size_hack()
-            pass
 
     def cleanup(self):
         if self.orig_stdout_atts:
