@@ -93,7 +93,24 @@ def write(fd, buf):
             n = os.write(fd, buf)
             buf = buf[n:]
         except (IOError, OSError):
-            pass
+            break
+
+
+def read(fd):
+    buf = ''
+    print(fd)
+    while True:
+        try:
+            # out('trying to read %s ...\r\n' % fd)
+            d = os.read(fd, FD_READ_BYTES)
+            # out('read %s bytes\r\n' % (len(d)))
+            if not d or d == '':
+                break
+            buf += d
+        except (IOError, OSError):
+            break
+    # out('total bytes read: %s' % (len(buf)))
+    return buf
 
 
 def out(*args):
@@ -358,19 +375,18 @@ class Flooty(object):
         die('User %s killed the terminal. Exiting.' % (data.get('username')))
 
     def on_term_stdin(self, data):
+        if data.get('id') != self.term_id:
+            return
         if not self.options.create:
             out('omg got a stdin event but we should never get one.\r\n')
-            return
-        if data.get('id') != self.term_id:
             return
         self.handle_stdio(data['data'])
 
     def on_term_stdout(self, data):
+        if data.get('id') != self.term_id:
+            return
         if not self.options.join:
             out('omg got a stdout event but we should never get one.\r\n')
-            return
-        if data.get('id') != self.term_id:
-            out('wrong id %s vs %s.\r\n' % (data.get('id'), self.term_id))
             return
         self.handle_stdio(data['data'])
 
@@ -428,7 +444,7 @@ class Flooty(object):
         fcntl.fcntl(stdin, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
         def ship_stdin(fd):
-            data = os.read(fd, FD_READ_BYTES)
+            data = read(fd)
             if data:
                 self.transport("term_stdin", {'data': data, 'id': self.term_id})
 
@@ -449,8 +465,7 @@ class Flooty(object):
         assert self.master_fd is None
         shell = os.environ['SHELL']
 
-        self.child_pid, master_fd = pty.fork()
-        self.master_fd = master_fd
+        self.child_pid, self.master_fd = pty.fork()
         if self.child_pid == pty.CHILD:
             os.execlp(shell, shell, '--login')
 
@@ -462,14 +477,28 @@ class Flooty(object):
         def slave_death(fd):
             die('Exiting flootty because child exited.')
 
+        self.extra_data = ''
+
         def stdout_write(fd):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
-            data = os.read(fd, FD_READ_BYTES)
+            data = self.extra_data + os.read(fd, FD_READ_BYTES)
+            self.extra_data = ""
             if data:
-                self.transport("term_stdout", {'data': data, 'id': self.term_id})
-                out(data)
+                while True:
+                    try:
+                        data.decode('utf-8')
+                    except UnicodeDecodeError:
+                        self.extra_data = data[-1] + self.extra_data
+                        data = data[:-1]
+                    else:
+                        break
+                    if len(self.extra_data) > 100:
+                        die('not a valid utf-8 string: %s' % self.extra_data)
+                if data:
+                    self.transport("term_stdout", {'data': data, 'id': self.term_id})
+                    out(data)
 
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
 
@@ -508,6 +537,21 @@ class Flooty(object):
         buf = array.array('h', [0, 0, 0, 0])
         fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
         fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, buf)
+
+    def _term_size_hack(self):
+        buf = array.array('h', [0, 0, 0, 0])
+        # the pty won't do a redraw unless we actually change the size
+        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf, True)
+        buf[0] += 1
+        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
+        buf[0] -= 1
+        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
+
+    def on_join(self, data):
+        # hack to get a prompt on the other end (or a quick redraw)
+        if self.options.create:
+            #self._term_size_hack()
+            pass
 
     def cleanup(self):
         if self.orig_stdout_atts:
