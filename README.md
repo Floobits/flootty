@@ -7,6 +7,10 @@ Flootty is a collaborative terminal. In practice, it's similar to a shared scree
 
 ## Installation
 
+	pip install flootty
+
+If you prefer, you can clone the git repo and run:
+
     python setup.py install
 
 
