@@ -156,18 +156,14 @@ def write(fd, buf):
 
 def read(fd):
     buf = ''
-    print(fd)
     while True:
         try:
-            # out('trying to read %s ...' % fd)
             d = os.read(fd, FD_READ_BYTES)
-            # out('read %s bytes' % (len(d)))
             if not d or d == '':
                 break
             buf += d
         except (IOError, OSError):
             break
-    # out('total bytes read: %s' % (len(buf)))
     return buf
 
 
@@ -183,7 +179,6 @@ def err(*args):
 
 def die(*args):
     err(*args)
-    err('\r\n')
     sys.exit(1)
 
 
@@ -446,18 +441,24 @@ class Flootty(object):
         if self.options.create:
             return self.transport('create_term', {'term_name': self.term_name})
         elif self.options.list:
-            print('Terminals in %s::%s' % (self.owner, self.room))
+            out('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
                 owner = str(term['owner'])
-                print('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
+                out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
             return die()
         elif not self.term_name:
-            if len(ri['terms']) == 1:
+            if len(ri['terms']) == 0:
+                die('There is no active terminal in this room. You can make one with the --create [super_awesome_name] flag.')
+            elif len(ri['terms']) == 1:
                 term_id, term = ri['terms'].items()[0]
                 self.term_id = int(term_id)
                 self.term_name = term['term_name']
-            if not self.term_name:
-                die('There is no active terminal in this room. You can make one with the --create [super_awesome_name] flag.')
+            else:
+                out('More than one active term exists in this room.')
+                for term_id, term in ri['terms'].items():
+                    owner = str(term['owner'])
+                    out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
+                    die('Please pick a room like so: flootty [super_awesome_name]')
         else:
             for term_id, term in ri['terms'].items():
                 if term['term_name'] == self.term_name:
@@ -472,7 +473,7 @@ class Flootty(object):
         if self.term_id is None:
             die(data.get('msg'))
         else:
-            out(data.get('msg'))
+            out('Error from server: %s' % data.get('msg'))
 
     def on_create_term(self, data):
         if data.get('term_name') != self.term_name:
@@ -559,7 +560,6 @@ class Flootty(object):
         self.add_fd(stdin, reader=ship_stdin, name='join_term_stdin')
 
         def stdout_write(buf):
-            #UnicodeEncodeError: 'ascii' codec can't encode character u'\u2014' in position 37: ordinal not in range(128)
             write(stdout, buf.encode('utf-8'))
 
         self.handle_stdio = stdout_write

@@ -2,12 +2,12 @@
 
 ## Development status: Working, but still a little buggy.
 
-Flootty is a collaborative terminal. In practice, it's similar to setting up a shared screen or tmux session.
+Flootty is a collaborative terminal. In practice, it's similar to a shared screen or tmux session.
 
 
 ## Installation
 
-TODO
+    python setup.py install
 
 
 ## Configuration
@@ -22,11 +22,15 @@ Add your Floobits username and API secret to `~/.floorc`. The format is newline-
 
 To create a shared terminal:
 
-    python flootty.py --owner=myuser --room=myroom --create=example_terminal
+    flootty --owner=myuser --room=myroom --create example_terminal
 
 To join that terminal:
 
-    python flootty.py --owner=myuser --room=myroom --join=example_terminal
+    flootty --owner=myuser --room=myroom example_terminal
 
+Flootty will automatically attempt to join a room without specifying the term name if there is only one terminal.
+Flootty is also able to read metadata in .floo files which floobits adds to the root directory of every shared room.  Simply call flootty from a shared directory.
+
+Edit permissions in a room are required to join a flooty and admin permissions are required to write to one.
 
 To avoid confusion, your terminal's prompt is prepended with the owner, room name, and terminal name.
