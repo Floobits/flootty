@@ -1,3 +1,6 @@
-.sublime-project
-node_modules
+*.egg-info
 *.pyc
+.sublime-project
+build
+dist
+node_modules
