@@ -34,11 +34,19 @@ import select
 import socket
 import ssl
 import sys
+import tempfile
 import termios
 import tty
 import signal
 import time
 from collections import defaultdict
+
+try:
+    from . import cert
+    assert cert
+except (ImportError, ValueError):
+    import cert
+
 
 PROTO_VERSION = '0.02'
 CLIENT = 'flootty'
@@ -409,7 +417,10 @@ class Flooty(object):
         self.empty_selects = 0
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if self.options.use_ssl:
-            self.sock = ssl.wrap_socket(self.sock, ca_certs=CERT, cert_reqs=ssl.CERT_REQUIRED)
+            self.cert_fd = tempfile.NamedTemporaryFile()
+            self.cert_fd.write(cert.CA_CERT.encode('utf-8'))
+            self.cert_fd.flush()
+            self.sock = ssl.wrap_socket(self.sock, ca_certs=self.cert_fd.name, cert_reqs=ssl.CERT_REQUIRED)
         elif self.port == 3448:
             self.port = 3148
         out('Connecting to %s:%s.\r\n' % (self.host, self.port))
@@ -563,6 +574,10 @@ class Flooty(object):
             tty.tcsetattr(sys.stdin, tty.TCSAFLUSH, self.orig_stdin_atts)
         if self.original_wincher:
             signal.signal(signal.SIGWINCH, self.original_wincher)
+        try:
+            self.cert_fd.close()
+        except Exception:
+            pass
         print('ciao.')
         sys.exit()
 
