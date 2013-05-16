@@ -457,7 +457,7 @@ class Flootty(object):
                 self.term_id = int(term_id)
                 self.term_name = term['term_name']
             if not self.term_name:
-                die('There is no active terminal in this room. You can make one with the --create []flag.')
+                die('There is no active terminal in this room. You can make one with the --create [super_awesome_name] flag.')
         else:
             for term_id, term in ri['terms'].items():
                 if term['term_name'] == self.term_name:
