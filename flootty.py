@@ -216,48 +216,48 @@ def main():
     parser.add_option("--username",
                       dest="username",
                       default=settings.get('username'),
-                      help="your username")
+                      help="Your Floobits username")
 
     parser.add_option("--secret",
                       dest="secret",
                       default=settings.get('secret'),
-                      help="your secret (apikey)")
+                      help="Your Floobits secret (api key)")
 
     parser.add_option("--host",
                       dest="host",
                       default="floobits.com",
-                      help="the host to connect to")
+                      help="The host to connect to")
 
     parser.add_option("--port",
                       dest="port",
                       default=3448,
-                      help="the port to connect to")
+                      help="The port to connect to")
 
     parser.add_option("--create",
                       dest="create",
                       default=False,
                       action="store_true",
-                      help="the terminal name to create")
+                      help="The terminal name to create")
 
     parser.add_option("--room",
                       dest="room",
-                      help="the room name")
+                      help="The room name")
 
     parser.add_option("--owner",
                       dest="owner",
-                      help="the room owner")
+                      help="The room owner")
 
     parser.add_option("--list",
                       dest="list",
                       default=False,
                       action="store_true",
-                      help="list all ptys in the room")
+                      help="List all ptys in the room")
 
     parser.add_option("--use-ssl",
                       dest="use_ssl",
                       default=True,
                       action="store_false",
-                      help="for debuging only- really don't use this")
+                      help="Defaults to true. Do not disable unless you know what you are doing!")
 
     options, args = parser.parse_args()
 
