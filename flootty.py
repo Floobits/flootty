@@ -253,24 +253,26 @@ def main():
                       action="store_true",
                       help="List all ptys in the room")
 
-    parser.add_option("--use-ssl",
+    parser.add_option("--no-ssl",
                       dest="use_ssl",
                       default=True,
                       action="store_false",
-                      help="Defaults to true. Do not disable unless you know what you are doing!")
+                      help="Do not use this option unless you know what you are doing!")
 
     options, args = parser.parse_args()
 
     term_name = args and args[0] or ""
 
-    if not options.room and not options.owner:
+    if not options.room or not options.owner:
         try:
             floo = json.loads(open('.floo', 'rb').read().decode('utf-8'))
             floo = parse_url(floo['url'])
             options.room = floo['room']
             options.owner = floo['owner']
-            options.port = floo['port']
-            options.host = floo['host']
+            if not options.port:
+                options.port = floo['port']
+            if not options.host:
+                options.host = floo['host']
         except Exception:
             pass
 
