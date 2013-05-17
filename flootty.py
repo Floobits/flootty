@@ -442,7 +442,7 @@ class Flootty(object):
         self.authed = True
         self.ri = ri
         if self.options.create:
-            return self.transport('create_term', {'term_name': self.term_name})
+            return self.transport('create_term', {'term_name': self.term_name, 'size': self._get_pty_size()})
         elif self.options.list:
             out('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
@@ -643,6 +643,11 @@ class Flootty(object):
         Signal handler for SIGWINCH - window size has changed.
         '''
         self._set_pty_size()
+
+    def _get_pty_size(self):
+        buf = array.array('h', [0, 0, 0, 0])
+        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
+        return buf[0], buf[1]
 
     def _set_pty_size(self):
         '''
