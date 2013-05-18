@@ -619,7 +619,9 @@ class Flootty(object):
 
         def stdin_write(fd):
             data = os.read(fd, FD_READ_BYTES)
-            write(self.master_fd, data)
+            if data:
+                write(self.master_fd, data)
+                self.transport("term_stdin", {'data': data, 'id': self.term_id})
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
