@@ -1,6 +1,6 @@
 # flootty
 
-## Development status: Working, but still a little buggy.
+## Development status: Works on Linux/OsX (Cygwin is untested).  
 
 Flootty is a collaborative terminal. In practice, it's similar to a shared screen or tmux session.
 
