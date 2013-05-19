@@ -99,7 +99,6 @@ PROTO_VERSION = '0.02'
 CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 4096
-CERT = os.path.join(os.getcwd(), 'startssl-ca.pem')
 TIMEOUTS = defaultdict(list)
 SELECT_TIMEOUT = .2
 # in secs
@@ -442,7 +441,8 @@ class Flootty(object):
         self.authed = True
         self.ri = ri
         if self.options.create:
-            return self.transport('create_term', {'term_name': self.term_name, 'size': self._get_pty_size()})
+            buf = self._get_pty_size()
+            return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[0], buf[1]]})
         elif self.options.list:
             out('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
@@ -649,7 +649,7 @@ class Flootty(object):
     def _get_pty_size(self):
         buf = array.array('h', [0, 0, 0, 0])
         fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
-        return buf[0], buf[1]
+        return buf
 
     def _set_pty_size(self):
         '''
@@ -658,18 +658,10 @@ class Flootty(object):
         assert self.master_fd is not None
 
         # Get the terminal size of the real terminal, set it on the pseudoterminal.
-        buf = array.array('h', [0, 0, 0, 0])
-        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
+        buf = self._get_pty_size()
         fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, buf)
-
-    def _term_size_hack(self):
-        buf = array.array('h', [0, 0, 0, 0])
-        # the pty won't do a redraw unless we actually change the size
-        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf, True)
-        buf[0] += 1
-        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
-        buf[0] -= 1
-        fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
+        if self.options.create and self.term_id:
+            self.transport('update_term', {'id': self.term_id, 'size': [buf[0], buf[1]]})
 
     def cleanup(self):
         if self.orig_stdout_atts:
