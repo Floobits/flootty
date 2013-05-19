@@ -489,11 +489,15 @@ class Flootty(object):
             return
         die('User %s killed the terminal. Exiting.' % (data.get('username')))
 
+    def on_update_term(self, data):
+        if data.get('id') != self.term_id:
+            return
+        self._set_pty_size()
+
     def on_term_stdin(self, data):
         if data.get('id') != self.term_id:
             return
         if not self.options.create:
-            out('omg got a stdin event but we should never get one.')
             return
         self.handle_stdio(data['data'])
 
@@ -570,6 +574,7 @@ class Flootty(object):
             write(stdout, buf.encode('utf-8'))
 
         self.handle_stdio = stdout_write
+        self._set_pty_size(self.ri['terms'][self.term_id]['size'])
 
     def create_term(self):
         '''
@@ -651,17 +656,23 @@ class Flootty(object):
         fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCGWINSZ, buf, True)
         return buf
 
-    def _set_pty_size(self):
+    def _set_pty_size(self, size=None):
         '''
         Sets the window size of the child pty based on the window size of our own controlling terminal.
         '''
-        assert self.master_fd is not None
-
         # Get the terminal size of the real terminal, set it on the pseudoterminal.
         buf = self._get_pty_size()
-        fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, buf)
-        if self.options.create and self.term_id:
-            self.transport('update_term', {'id': self.term_id, 'size': [buf[0], buf[1]]})
+        if size:
+            buf[0] = size[0]
+            buf[1] = size[1]
+
+        if self.options.create:
+            assert self.master_fd is not None
+            fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, buf)
+            if self.term_id:
+                self.transport('update_term', {'id': self.term_id, 'size': [buf[0], buf[1]]})
+        else:
+            fcntl.ioctl(self.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
 
     def cleanup(self):
         if self.orig_stdout_atts:
