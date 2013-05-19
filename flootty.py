@@ -442,7 +442,7 @@ class Flootty(object):
         self.ri = ri
         if self.options.create:
             buf = self._get_pty_size()
-            return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[0], buf[1]]})
+            return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
         elif self.options.list:
             out('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
@@ -663,14 +663,14 @@ class Flootty(object):
         # Get the terminal size of the real terminal, set it on the pseudoterminal.
         buf = self._get_pty_size()
         if size:
-            buf[0] = size[0]
-            buf[1] = size[1]
+            buf[0] = size[1]
+            buf[1] = size[0]
 
         if self.options.create:
             assert self.master_fd is not None
             fcntl.ioctl(self.master_fd, termios.TIOCSWINSZ, buf)
             if self.term_id:
-                self.transport('update_term', {'id': self.term_id, 'size': [buf[0], buf[1]]})
+                self.transport('update_term', {'id': self.term_id, 'size': [buf[1], buf[0]]})
         else:
             fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
 
