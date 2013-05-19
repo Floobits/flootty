@@ -574,7 +574,7 @@ class Flootty(object):
             write(stdout, buf.encode('utf-8'))
 
         self.handle_stdio = stdout_write
-        self._set_pty_size(self.ri['terms'][self.term_id]['size'])
+        self._set_pty_size(self.ri['terms'][str(self.term_id)]['size'])
 
     def create_term(self):
         '''
@@ -672,7 +672,7 @@ class Flootty(object):
             if self.term_id:
                 self.transport('update_term', {'id': self.term_id, 'size': [buf[0], buf[1]]})
         else:
-            fcntl.ioctl(self.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
+            fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
 
     def cleanup(self):
         if self.orig_stdout_atts:
