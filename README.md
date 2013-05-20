@@ -18,7 +18,7 @@ If you prefer, you can clone the git repo and run:
 
 ## Configuration
 
-First thing, you need a [https://floobits.com/](floobits) account.  Then, add your Floobits username and API secret to `~/.floorc`. The format is newline-delimited key-space-value. A typical floorc looks like this:
+First thing, you need a [floobits](https://floobits.com/) account.  Then, add your Floobits username and API secret to `~/.floorc`. The format is newline-delimited key-space-value. A typical floorc looks like this:
 
     username myuser
     secret gii9Ka8aZei3ej1eighu2vi8D
