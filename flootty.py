@@ -94,7 +94,6 @@ um0ABj6y6koQOdjQK/W/7HW/lwLFCRsI3FU34oH7N4RDYiDK51ZLZer+bMEkkySh
 NOsF/5oirpt9P/FlUQqmMGqz9IgcgA38corog14=
 -----END CERTIFICATE-----'''
 
-
 PROTO_VERSION = '0.02'
 CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
@@ -258,22 +257,33 @@ def main():
                       action="store_false",
                       help="Do not use this option unless you know what you are doing!")
 
+    parser.add_option("--url",
+                      dest="room_url",
+                      default=None,
+                      help="The URL of the room to connect to. This is a convenience for copy-pasting from the browser.")
+
     options, args = parser.parse_args()
 
     term_name = args and args[0] or ""
 
+    if options.room and options.owner and options.room_url:
+        parser.error("You can either specify --room and --owner, or --room_url, but not both.")
+
     if not options.room or not options.owner:
-        try:
-            floo = json.loads(open('.floo', 'rb').read().decode('utf-8'))
-            floo = parse_url(floo['url'])
-            options.room = floo['room']
-            options.owner = floo['owner']
-            if not options.port:
-                options.port = floo['port']
-            if not options.host:
-                options.host = floo['host']
-        except Exception:
-            pass
+        if options.room_url:
+            floo = parse_url(options.room_url)
+        else:
+            try:
+                floo = json.loads(open('.floo', 'rb').read().decode('utf-8'))
+                floo = parse_url(floo['url'])
+            except Exception:
+                pass
+        options.room = floo['room']
+        options.owner = floo['owner']
+        if not options.port:
+            options.port = floo['port']
+        if not options.host:
+            options.host = floo['host']
 
     if options.list:
         if len(term_name) != 0:
