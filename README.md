@@ -2,7 +2,9 @@
 
 ## Development status: Works on Linux/OsX (Cygwin is untested).  
 
-Flootty is a collaborative terminal. In practice, it's similar to a shared screen or tmux session.
+Flootty is a collaborative terminal. In practice, it's similar to a shared screen or tmux session.  
+Flootty makes it dead simple for multiple users to share a shell.
+We also added a pty to our browser based editor for those without a terminal.
 
 
 ## Installation
@@ -16,7 +18,7 @@ If you prefer, you can clone the git repo and run:
 
 ## Configuration
 
-Add your Floobits username and API secret to `~/.floorc`. The format is newline-delimited key-space-value. A typical floorc looks like this:
+First thing, you need a [https://floobits.com/](floobits) account.  Then, add your Floobits username and API secret to `~/.floorc`. The format is newline-delimited key-space-value. A typical floorc looks like this:
 
     username myuser
     secret gii9Ka8aZei3ej1eighu2vi8D
