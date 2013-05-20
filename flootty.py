@@ -556,7 +556,20 @@ class Flootty(object):
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
         self.select()
 
+    def room_url(self):
+        proto = {True: "https", False: "http"}
+        proto_str = proto[self.options.use_ssl]
+        port_str = ''
+        if self.options.use_ssl:
+            if self.port != 3448:
+                port_str = ':%s' % self.port
+        else:
+            if self.port != 3148:
+                port_str = ':%s' % self.port
+        return '%s://%s%s/r/%s/%s/' % (proto_str, self.host, port_str, self.owner, self.room)
+
     def join_term(self):
+        out('Successfully joined %s' % (self.room_url()))
         self.orig_stdout_atts = tty.tcgetattr(sys.stdout)
         stdout = sys.stdout.fileno()
         tty.setraw(stdout)
@@ -591,6 +604,7 @@ class Flootty(object):
         Create a spawned process.
         Based on the code for pty.spawn().
         '''
+        out('Successfully joined %s' % (self.room_url()))
 
         assert self.master_fd is None
         shell = os.environ['SHELL']
