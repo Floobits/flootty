@@ -696,6 +696,8 @@ class Flootty(object):
             if self.term_id:
                 self.transport('update_term', {'id': self.term_id, 'size': [buf[1], buf[0]]})
         else:
+            # XXXX: this resizes the window :/
+            #os.write(pty.STDOUT_FILENO, "\x1b[8;{rows};{cols}t".format(rows=buf[0], cols=buf[1]))
             fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
 
     def cleanup(self):
