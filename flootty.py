@@ -278,12 +278,12 @@ def main():
                 floo = parse_url(floo['url'])
             except Exception:
                 pass
-        options.room = floo['room']
-        options.owner = floo['owner']
+        options.room = floo.get('room')
+        options.owner = floo.get('owner')
         if not options.port:
-            options.port = floo['port']
+            options.port = floo.get('port')
         if not options.host:
-            options.host = floo['host']
+            options.host = floo.get('host')
 
     if options.list:
         if len(term_name) != 0:
