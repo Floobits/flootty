@@ -5,7 +5,7 @@ import os
 from setuptools import setup
 
 setup(name='Flootty',
-      version='0.10',
+      version='0.11',
       description='Floobits collaborative terminal',
       long_description=open(os.path.join(os.path.dirname(__file__), 'README.md')).read(),
       author='Floobits',
@@ -13,6 +13,9 @@ setup(name='Flootty',
       url='https://floobits.com/',
       license="Apache2",
       py_modules=['flootty'],
+      package_data={
+      '': ['README.md']
+      },
       entry_points={
       'console_scripts': [
           'flootty = flootty:main',
