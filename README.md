@@ -28,15 +28,15 @@ First thing, you need a [floobits](https://floobits.com/) account.  Then, add yo
 
 To create a shared terminal:
 
-    flootty --owner=myuser --room=myroom --create example_terminal
+    flootty --owner=myuser --workspace=myworkspace --create example_terminal
 
 To join that terminal:
 
-    flootty --owner=myuser --room=myroom example_terminal
+    flootty --owner=myuser --workspace=myworkspace example_terminal
 
-Flootty will automatically attempt to join a room without specifying the term name if there is only one terminal.
-Flootty is also able to read metadata in .floo files which floobits adds to the root directory of every shared room.  Simply call flootty from a shared directory.
+Flootty will automatically attempt to join a workspace without specifying the term name if there is only one terminal.
+Flootty is also able to read metadata in .floo files which floobits adds to the root directory of every shared workspace.  Simply call flootty from a shared directory.
 
-Edit permissions in a room are required to join a flooty and admin permissions are required to write to one.
+Edit permissions in a workspace are required to join a flooty and admin permissions are required to write to one.
 
-To avoid confusion, your terminal's prompt is prepended with the owner, room name, and terminal name.
+To avoid confusion, your terminal's prompt is prepended with the owner, workspace name, and terminal name.

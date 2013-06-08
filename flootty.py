@@ -208,7 +208,7 @@ def parse_url(room_url):
 
 def main():
     settings = read_floorc()
-    usage = "usage: %prog  --room=ROOM --owner=OWNER [options] term_name.\n\n\tSee https://github.com/Floobits/flootty"
+    usage = "usage: %prog  --workspace=WORKSPACE --owner=OWNER [options] term_name.\n\n\tSee https://github.com/Floobits/flootty"
     parser = optparse.OptionParser(usage=usage)
 
     parser.add_option("--username",
@@ -237,19 +237,19 @@ def main():
                       action="store_true",
                       help="The terminal name to create")
 
-    parser.add_option("--room",
+    parser.add_option("--workspace",
                       dest="room",
-                      help="The room name")
+                      help="The workspace name")
 
     parser.add_option("--owner",
                       dest="owner",
-                      help="The room owner")
+                      help="The workspace owner")
 
     parser.add_option("--list",
                       dest="list",
                       default=False,
                       action="store_true",
-                      help="List all ptys in the room")
+                      help="List all ptys in the workspace")
 
     parser.add_option("--no-ssl",
                       dest="use_ssl",
@@ -260,14 +260,14 @@ def main():
     parser.add_option("--url",
                       dest="room_url",
                       default=None,
-                      help="The URL of the room to connect to. This is a convenience for copy-pasting from the browser.")
+                      help="The URL of the workspace to connect to. This is a convenience for copy-pasting from the browser.")
 
     options, args = parser.parse_args()
 
     term_name = args and args[0] or ""
 
     if options.room and options.owner and options.room_url:
-        parser.error("You can either specify --room and --owner, or --room_url, but not both.")
+        parser.error("You can either specify --workspace and --owner, or --url, but not both.")
 
     if not options.room or not options.owner:
         if options.room_url:
@@ -461,17 +461,17 @@ class Flootty(object):
             return die()
         elif not self.term_name:
             if len(ri['terms']) == 0:
-                die('There is no active terminal in this room. You can make one with the --create [super_awesome_name] flag.')
+                die('There is no active terminal in this workspace. You can make one with the --create [super_awesome_name] flag.')
             elif len(ri['terms']) == 1:
                 term_id, term = ri['terms'].items()[0]
                 self.term_id = int(term_id)
                 self.term_name = term['term_name']
             else:
-                out('More than one active term exists in this room.')
+                out('More than one active term exists in this workspace.')
                 for term_id, term in ri['terms'].items():
                     owner = str(term['owner'])
                     out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
-                    die('Please pick a room like so: flootty [super_awesome_name]')
+                    die('Please pick a workspace like so: flootty [super_awesome_name]')
         else:
             for term_id, term in ri['terms'].items():
                 if term['term_name'] == self.term_name:
