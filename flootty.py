@@ -270,6 +270,7 @@ def main():
         parser.error("You can either specify --workspace and --owner, or --url, but not both.")
 
     if not options.room or not options.owner:
+        floo = {}
         if options.room_url:
             floo = parse_url(options.room_url)
         else:
