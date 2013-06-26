@@ -211,12 +211,12 @@ def main():
     usage = "usage: %prog  --workspace=WORKSPACE --owner=OWNER [options] term_name.\n\n\tSee https://github.com/Floobits/flootty"
     parser = optparse.OptionParser(usage=usage)
 
-    parser.add_option("--username",
+    parser.add_option("-u", "--username",
                       dest="username",
                       default=settings.get('username'),
                       help="Your Floobits username")
 
-    parser.add_option("--secret",
+    parser.add_option("-s", "--secret",
                       dest="secret",
                       default=settings.get('secret'),
                       help="Your Floobits secret (api key)")
@@ -226,26 +226,26 @@ def main():
                       default="floobits.com",
                       help="The host to connect to")
 
-    parser.add_option("--port",
+    parser.add_option("-p", "--port",
                       dest="port",
                       default=3448,
                       help="The port to connect to")
 
-    parser.add_option("--create",
+    parser.add_option("-c", "--create",
                       dest="create",
                       default=False,
                       action="store_true",
                       help="The terminal name to create")
 
-    parser.add_option("--workspace",
+    parser.add_option("-w", "--workspace",
                       dest="room",
                       help="The workspace name")
 
-    parser.add_option("--owner",
+    parser.add_option("-o", "--owner",
                       dest="owner",
                       help="The workspace owner")
 
-    parser.add_option("--list",
+    parser.add_option("-l", "--list",
                       dest="list",
                       default=False,
                       action="store_true",
