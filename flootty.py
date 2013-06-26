@@ -481,6 +481,7 @@ class Flootty(object):
                 choice = raw_input().lower()
                 self.term_name = "_"
                 if choice == 'y':
+                    self.options.create = True
                     buf = self._get_pty_size()
                     return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
                 else:
