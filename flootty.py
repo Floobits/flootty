@@ -477,7 +477,14 @@ class Flootty(object):
             return die()
         elif not self.term_name:
             if len(ri['terms']) == 0:
-                die('There is no active terminal in this workspace. You can make one with the --create [super_awesome_name] flag.')
+                out('There is no active terminal in this workspace. Do you want to share your terminal? (y/n)')
+                choice = raw_input().lower()
+                self.term_name = "_"
+                if choice == 'y':
+                    buf = self._get_pty_size()
+                    return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
+                else:
+                    die('If you ever change your mind, you can share your terminal using the --create [super_awesome_name] flag.')
             elif len(ri['terms']) == 1:
                 term_id, term = ri['terms'].items()[0]
                 self.term_id = int(term_id)
