@@ -305,11 +305,13 @@ def main():
 
 
 def walk_up(path):
-    parent = os.path.realpath(os.path.join(path, '..'))
+    step_up = lambda x: os.path.realpath(os.path.join(x, '..'))
+    parent = step_up(path)
+    while parent != path:
+        yield path
+        path = parent
+        parent = step_up(path)
     yield path
-    if parent == path:
-        return
-    walk_up(parent)
 
 
 class FD(object):
