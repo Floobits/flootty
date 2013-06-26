@@ -264,7 +264,11 @@ def main():
 
     options, args = parser.parse_args()
 
-    term_name = args and args[0] or ""
+    default_term_name = ""
+    if options.create:
+        default_term_name = "_"
+
+    term_name = args and args[0] or default_term_name
 
     if options.room and options.owner and options.room_url:
         parser.error("You can either specify --workspace and --owner, or --url, but not both.")
