@@ -278,11 +278,12 @@ def main():
         if options.room_url:
             floo = parse_url(options.room_url)
         else:
-            try:
-                floo = json.loads(open('.floo', 'rb').read().decode('utf-8'))
-                floo = parse_url(floo['url'])
-            except Exception:
-                pass
+            for floo_path in walk_up(os.path.realpath('.')):
+                try:
+                    floo = json.loads(open(os.path.join(floo_path, '.floo'), 'rb').read().decode('utf-8'))
+                    floo = parse_url(floo['url'])
+                except Exception:
+                    pass
         options.room = floo.get('room')
         options.owner = floo.get('owner')
         if not options.port:
@@ -301,6 +302,14 @@ def main():
     f = Flootty(options, term_name)
     atexit.register(f.cleanup)
     f.connect_to_internet()
+
+
+def walk_up(path):
+    parent = os.path.realpath(os.path.join(path, '..'))
+    yield path
+    if parent == path:
+        return
+    walk_up(parent)
 
 
 class FD(object):
