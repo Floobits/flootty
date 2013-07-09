@@ -1,8 +1,8 @@
 # flootty
 
-## Development status: Works on Linux/OsX (Cygwin is untested).  
+## Development status: Works on Linux/OsX (Cygwin is untested).
 
-Flootty is a collaborative terminal. In practice, it's similar to a shared screen or tmux session.  
+Flootty is a collaborative terminal. In practice, it's similar to a shared screen or tmux session.
 Flootty makes it dead simple for multiple users to share a shell.
 We also added a pty to our browser based editor for those without a terminal.
 
