@@ -99,7 +99,7 @@ CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 4096
 TIMEOUTS = defaultdict(list)
-SELECT_TIMEOUT = .2
+SELECT_TIMEOUT = 0.2
 # in secs
 NET_TIMEOUT = 10
 
@@ -423,7 +423,7 @@ class Flootty(object):
             self.handle(buf)
         else:
             self.empty_selects += 1
-            if int(self.empty_selects * SELECT_TIMEOUT) > NET_TIMEOUT:
+            if (int(self.empty_selects * SELECT_TIMEOUT)) > NET_TIMEOUT:
                 err('No data from sock.recv() {0} times.'.format(self.empty_selects))
                 return self.reconnect()
 
@@ -505,6 +505,9 @@ class Flootty(object):
         if self.term_id is None:
             die('No terminal with name %s' % self.term_name)
         return self.join_term()
+
+    def on_disconnect(self, data):
+        die('You were disconnected because: %s.' % data.get('reason', '').lower())
 
     def on_error(self, data):
         if self.term_id is None:
