@@ -15,7 +15,7 @@ setup(name='Flootty',
       },
       entry_points={
       'console_scripts': [
-          'flootty = flootty:main',
+          'flootty = flootty.flootty:main',
       ]},
       classifiers=[
       'Development Status :: 4 - Beta',
