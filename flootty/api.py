@@ -12,7 +12,7 @@ except ImportError:
 try:
     from . import shared as G, utils
     assert G and utils
-except ImportError:
+except (ImportError, ValueError):
     import shared as G
     import utils
 
