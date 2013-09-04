@@ -435,7 +435,7 @@ class Flootty(object):
             out('Terminals in %s::%s' % (self.owner, self.room))
             for term_id, term in ri['terms'].items():
                 owner = str(term['owner'])
-                out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
+                out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]['username']))
             return die()
         elif not self.term_name:
             if len(ri['terms']) == 0:
