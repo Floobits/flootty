@@ -35,4 +35,3 @@ def parse_url(workspace_url):
         'workspace': workspace_name,
         'secure': secure,
     }
-
