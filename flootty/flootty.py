@@ -432,10 +432,10 @@ class Flootty(object):
             buf = self._get_pty_size()
             term_name = self.term_name
             i = 0
-            for term_id, term in ri['terms'].items():
-                if term['term_name'] == term_name:
-                    i += 1
-                    term_name = self.term_name + str(i)
+            term_names = [term['term_name'] for term_id, term in ri['terms'].items()]
+            while term_name in term_names:
+                i += 1
+                term_name = self.term_name + str(i)
             self.term_name = term_name
             return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
         elif self.options.list:
