@@ -11,16 +11,16 @@ setup(name='Flootty',
       license="Apache2",
       py_modules=['flootty'],
       package_data={
-      '': ['README.md']
+          '': ['README.md']
       },
       entry_points={
-      'console_scripts': [
-          'flootty = flootty.flootty:main',
-      ]},
+          'console_scripts': [
+              'flootty = flootty.flootty:main',
+          ]},
       classifiers=[
-      'Development Status :: 4 - Beta',
-      'Intended Audience :: Developers',
-      'License :: OSI Approved :: Apache Software License',
-      'Topic :: Terminals',
-      'Topic :: Utilities',
+          'Development Status :: 4 - Beta',
+          'Intended Audience :: Developers',
+          'License :: OSI Approved :: Apache Software License',
+          'Topic :: Terminals',
+          'Topic :: Utilities',
       ])
