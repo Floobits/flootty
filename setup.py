@@ -9,7 +9,7 @@ setup(name='Flootty',
       author_email='info@floobits.com',
       url='https://floobits.com/',
       license="Apache2",
-      py_modules=['flootty'],
+      packages=['flootty'],
       package_data={
           '': ['README.md']
       },
