@@ -430,6 +430,13 @@ class Flootty(object):
         self.ri = ri
         if self.options.create:
             buf = self._get_pty_size()
+            term_name = self.term_name
+            i = 0
+            for term_id, term in ri['terms'].items():
+                if term['term_name'] == term_name:
+                    i += 1
+                    term_name = self.term_name + str(i)
+            self.term_name = term_name
             return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
         elif self.options.list:
             out('Terminals in %s::%s' % (self.owner, self.room))
