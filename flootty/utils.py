@@ -1,7 +1,10 @@
-import os
-import json
 import re
-import hashlib
+
+try:
+    from urllib.parse import urlparse
+    assert urlparse
+except ImportError:
+    from urlparse import urlparse
 
 try:
     from . import shared as G
