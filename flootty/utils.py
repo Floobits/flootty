@@ -1,4 +1,6 @@
 import re
+import time
+from collections import defaultdict
 
 try:
     from urllib.parse import urlparse
@@ -11,6 +13,49 @@ try:
     assert G
 except (ImportError, ValueError):
     import shared as G
+
+
+top_timeout_id = 0
+cancelled_timeouts = set()
+timeout_ids = set()
+timeouts = defaultdict(list)
+
+
+def set_timeout(func, timeout, *args, **kwargs):
+    global top_timeout_id
+    timeout_id = top_timeout_id
+    top_timeout_id += 1
+    if top_timeout_id > 100000:
+        top_timeout_id = 0
+
+    def timeout_func():
+        timeout_ids.discard(timeout_id)
+        if timeout_id in cancelled_timeouts:
+            cancelled_timeouts.remove(timeout_id)
+            return
+        func(*args, **kwargs)
+
+    then = time.time() + (timeout / 1000.0)
+    timeouts[then].append(timeout_func)
+    timeout_ids.add(timeout_id)
+    return timeout_id
+
+
+def cancel_timeout(timeout_id):
+    if timeout_id in timeout_ids:
+        cancelled_timeouts.add(timeout_id)
+
+
+def call_timeouts():
+    now = time.time()
+    to_remove = []
+    for t, tos in timeouts.items():
+        if now >= t:
+            for timeout in tos:
+                timeout()
+            to_remove.append(t)
+    for k in to_remove:
+        del timeouts[k]
 
 
 def parse_url(workspace_url):
