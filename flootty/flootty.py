@@ -39,6 +39,7 @@ import termios
 import tty
 import signal
 import re
+import collections
 
 try:
     from urllib.parse import urlparse
@@ -60,8 +61,9 @@ CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
 # Seconds
-SELECT_TIMEOUT = 0.2
+SELECT_TIMEOUT = 0.1
 NET_TIMEOUT = 10
+MAX_BYTES_TO_BUFFER = 8192
 
 
 def read_floorc():
@@ -284,7 +286,7 @@ class Flootty(object):
         self.empty_selects = 0
         self.reconnect_timeout = None
 
-        self.buf_out = []
+        self.buf_out = collections.deque()
         self.buf_in = ''
 
         self.host = options.host
@@ -374,8 +376,11 @@ class Flootty(object):
     def cloud_write(self, fd):
         try:
             while True:
-                item = self.buf_out.pop(0)
+                item = self.buf_out.popleft()
                 self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
+        except socket.error:
+            self.buf_out.appendleft(item)
+            self.reconnect()
         except IndexError:
             pass
 
@@ -493,6 +498,23 @@ class Flootty(object):
     def reconnect(self):
         if self.reconnect_timeout:
             return
+
+        new_buf_out = collections.deque()
+        total_len = 0
+        while True:
+            try:
+                item = self.buf_out.popleft()
+            except IndexError:
+                break
+
+            if item['name'] == 'term_stdout':
+                total_len += len(item['data'])
+                if total_len > MAX_BYTES_TO_BUFFER:
+                    continue
+            new_buf_out.appendleft(item)
+
+        self.buf_out = new_buf_out
+
         if self.sock:
             self.readers.remove(self.sock.fileno())
             self.writers.remove(self.sock.fileno())
@@ -512,7 +534,6 @@ class Flootty(object):
         self.reconnect_timeout = utils.set_timeout(self.connect_to_internet, self.reconnect_delay)
 
     def send_auth(self):
-        self.buf_out = []
         self.transport('auth', {
             'username': self.options.username,
             'secret': self.options.secret,
