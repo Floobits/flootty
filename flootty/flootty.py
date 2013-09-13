@@ -63,7 +63,7 @@ FD_READ_BYTES = 65536
 # Seconds
 SELECT_TIMEOUT = 0.1
 NET_TIMEOUT = 10
-MAX_BYTES_TO_BUFFER = 8192
+MAX_BYTES_TO_BUFFER = 65536
 
 
 def read_floorc():
@@ -374,15 +374,22 @@ class Flootty(object):
                 return self.reconnect()
 
     def cloud_write(self, fd):
+        new_buf_out = collections.deque()
         try:
             while True:
                 item = self.buf_out.popleft()
-                self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
+                if self.authed:
+                    self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
+                elif item['name'] == 'auth':
+                    self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
+                else:
+                    new_buf_out.append(item)
         except socket.error:
             self.buf_out.appendleft(item)
             self.reconnect()
         except IndexError:
             pass
+        self.buf_out.extendleft(new_buf_out)
 
     def cloud_err(self, err):
         out('reconnecting because of %s' % err)
@@ -511,7 +518,7 @@ class Flootty(object):
                 total_len += len(item['data'])
                 if total_len > MAX_BYTES_TO_BUFFER:
                     continue
-            new_buf_out.appendleft(item)
+                new_buf_out.appendleft(item)
 
         self.buf_out = new_buf_out
 
@@ -528,13 +535,15 @@ class Flootty(object):
             except Exception:
                 pass
             self.sock = None
+        self.authed = False
         self.reconnect_delay *= 1.5
         if self.reconnect_delay > 10000:
             self.reconnect_delay = 10000
         self.reconnect_timeout = utils.set_timeout(self.connect_to_internet, self.reconnect_delay)
 
     def send_auth(self):
-        self.transport('auth', {
+        self.buf_out.appendleft({
+            'name': 'auth',
             'username': self.options.username,
             'secret': self.options.secret,
             'room': self.room,
