@@ -38,9 +38,7 @@ import tempfile
 import termios
 import tty
 import signal
-import time
 import re
-from collections import defaultdict
 
 try:
     from urllib.parse import urlparse
@@ -49,40 +47,21 @@ except ImportError:
     from urlparse import urlparse
 
 try:
-    from . import api, cert
-    assert api and cert
+    from . import api, cert, utils
+    assert api and cert and utils
 except (ImportError, ValueError):
     import api
     import cert
+    import utils
 
 
 PROTO_VERSION = '0.03'
 CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
-TIMEOUTS = defaultdict(list)
 # Seconds
 SELECT_TIMEOUT = 0.2
 NET_TIMEOUT = 10
-
-
-def set_timeout(func, timeout=None, *args, **kwargs):
-    if timeout is None:
-        timeout = 0
-    then = time.time() + (timeout / 1000.0)
-    TIMEOUTS[then].append(lambda: func(*args, **kwargs))
-
-
-def call_timeouts():
-    now = time.time()
-    to_remove = []
-    for t, timeouts in TIMEOUTS.items():
-        if now >= t:
-            for timeout in timeouts:
-                timeout()
-            to_remove.append(t)
-    for k in to_remove:
-        del TIMEOUTS[k]
 
 
 def read_floorc():
@@ -302,6 +281,7 @@ class Flootty(object):
         self.writers = set()
         self.errers = set()
         self.empty_selects = 0
+        self.reconnect_timeout = None
 
         self.buf_out = []
         self.buf_in = ''
@@ -343,7 +323,7 @@ class Flootty(object):
         attrs = ('errer', 'reader', 'writer')
 
         while True:
-            call_timeouts()
+            utils.call_timeouts()
 
             if len(self.buf_out) == 0:
                 self.writers.remove(self.sock.fileno())
@@ -513,7 +493,20 @@ class Flootty(object):
         self.handle_stdio(data['data'])
 
     def reconnect(self):
-        die('not reconnecting.')
+        if self.reconnect_timeout:
+            return
+        try:
+            self.sock.shutdown(2)
+        except Exception:
+            pass
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+        self.reconnect_delay *= 1.5
+        if self.reconnect_delay > 10000:
+            self.reconnect_delay = 10000
+        self.reconnect_timeout = utils.set_timeout(self.reconnect_delay, self.connect_to_internet)
 
     def send_auth(self):
         self.buf_out = []
@@ -529,6 +522,7 @@ class Flootty(object):
 
     def connect_to_internet(self):
         self.empty_selects = 0
+        self.reconnect_timeout = None
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if self.options.use_ssl:
             self.cert_fd = tempfile.NamedTemporaryFile()
