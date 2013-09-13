@@ -29,7 +29,7 @@ def set_timeout(func, timeout, *args, **kwargs):
         top_timeout_id = 0
 
     def timeout_func():
-        timeout_ids.remove(timeout_id)
+        timeout_ids.discard(timeout_id)
         if timeout_id in cancelled_timeouts:
             cancelled_timeouts.remove(timeout_id)
             return

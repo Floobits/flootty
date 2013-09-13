@@ -243,6 +243,7 @@ def main():
     f = Flootty(options, term_name)
     atexit.register(f.cleanup)
     f.connect_to_internet()
+    f.select()
 
 
 def walk_up(path):
@@ -325,7 +326,7 @@ class Flootty(object):
         while True:
             utils.call_timeouts()
 
-            if len(self.buf_out) == 0:
+            if len(self.buf_out) == 0 and self.sock:
                 self.writers.remove(self.sock.fileno())
             try:
                 # NOTE: you will never have to write anything without reading first from a different one
@@ -336,10 +337,11 @@ class Flootty(object):
                 # Interrupted system call.
                 if e[0] == 4:
                     continue
-                err('Error in select(): %s' % str(e))
-                return self.reconnect()
+                self.reconnect()
+                continue
             finally:
-                self.writers.add(self.sock.fileno())
+                if self.sock:
+                    self.writers.add(self.sock.fileno())
 
             for position, fds in enumerate([_except, _in, _out]):
                 attr = attrs[position]
@@ -352,14 +354,14 @@ class Flootty(object):
 
     def cloud_read(self, fd):
         buf = ''
-        while True:
-            try:
+        try:
+            while True:
                 d = self.sock.recv(FD_READ_BYTES)
                 if not d:
                     break
                 buf += d
-            except (socket.error, TypeError):
-                break
+        except (socket.error, TypeError):
+            pass
         if buf:
             self.empty_selects = 0
             self.handle(buf)
@@ -370,12 +372,12 @@ class Flootty(object):
                 return self.reconnect()
 
     def cloud_write(self, fd):
-        while True:
-            try:
+        try:
+            while True:
                 item = self.buf_out.pop(0)
                 self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
-            except IndexError:
-                break
+        except IndexError:
+            pass
 
     def cloud_err(self, err):
         out('reconnecting because of %s' % err)
@@ -387,11 +389,7 @@ class Flootty(object):
             before, sep, after = self.buf_in.partition('\n')
             if not sep:
                 break
-            try:
-                data = json.loads(before, encoding='utf-8')
-            except Exception as e:
-                out('Unable to parse json: %s' % str(e))
-                raise e
+            data = json.loads(before, encoding='utf-8')
             self.handle_event(data)
             self.buf_in = after
 
@@ -495,18 +493,23 @@ class Flootty(object):
     def reconnect(self):
         if self.reconnect_timeout:
             return
-        try:
-            self.sock.shutdown(2)
-        except Exception:
-            pass
-        try:
-            self.sock.close()
-        except Exception:
-            pass
+        if self.sock:
+            self.readers.remove(self.sock.fileno())
+            self.writers.remove(self.sock.fileno())
+            self.errers.remove(self.sock.fileno())
+            try:
+                self.sock.shutdown(2)
+            except Exception:
+                pass
+            try:
+                self.sock.close()
+            except Exception:
+                pass
+            self.sock = None
         self.reconnect_delay *= 1.5
         if self.reconnect_delay > 10000:
             self.reconnect_delay = 10000
-        self.reconnect_timeout = utils.set_timeout(self.reconnect_delay, self.connect_to_internet)
+        self.reconnect_timeout = utils.set_timeout(self.connect_to_internet, self.reconnect_delay)
 
     def send_auth(self):
         self.buf_out = []
@@ -544,7 +547,6 @@ class Flootty(object):
         self.send_auth()
         self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err, name='net')
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
-        self.select()
 
     def room_url(self):
         proto = {True: "https", False: "http"}
@@ -596,7 +598,9 @@ class Flootty(object):
         '''
         out('Successfully joined %s' % (self.room_url()))
 
-        assert self.master_fd is None
+        if self.master_fd:
+            # reconnected. don't spawn a new shell
+            return
         shell = os.environ['SHELL']
 
         self.child_pid, self.master_fd = pty.fork()
