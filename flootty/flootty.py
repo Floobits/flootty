@@ -527,12 +527,12 @@ class Flootty(object):
             return
         if not self.options.create:
             return
-        self.handle_stdio(data['data'])
+        self.handle_stdio(data['data'].encode('utf-8'))
 
     def on_term_stdout(self, data):
         if data.get('id') != self.term_id:
             return
-        self.handle_stdio(data['data'])
+        self.handle_stdio(data['data'].encode('utf-8'))
 
     def reconnect(self):
         if self.reconnect_timeout:
@@ -689,7 +689,7 @@ class Flootty(object):
                     try:
                         data.decode('utf-8')
                     except UnicodeDecodeError:
-                        self.extra_data = data[-1] + self.extra_data
+                        self.extra_data = data[-1:] + self.extra_data
                         data = data[:-1]
                     else:
                         break
