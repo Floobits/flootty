@@ -23,6 +23,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+# boilerplate to allow running as script directly
+if __name__ == "__main__" and __package__ is None:
+    import sys
+    import os
+    # The following assumes the script is in the top level of the package
+    # directory.  We use dirname() to help get the parent directory to add to
+    # sys.path, so that we can import the current package.  This is necessary
+    # since when invoked directly, the 'current' package is not automatically
+    # imported.
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, parent_dir)
+    import flootty
+    assert flootty
+    __package__ = str("flootty")
+    del sys, os
+
 import atexit
 import fcntl
 import json
@@ -42,16 +58,22 @@ import re
 import collections
 
 try:
+    import __builtin__
+    input = getattr(__builtin__, 'raw_input')
+except (ImportError, AttributeError):
+    pass
+
+
+try:
     from urllib.parse import urlparse
     assert urlparse
 except ImportError:
     from urlparse import urlparse
 
 try:
-    from . import api, cert, utils
-    assert api and cert and utils
+    from . import cert, utils
+    assert cert and utils
 except (ImportError, ValueError):
-    import api
     import cert
     import utils
 
@@ -88,7 +110,6 @@ def read_floorc():
 def write(fd, b):
     while len(b):
         try:
-            # TODO: fix this for python3
             n = os.write(fd, b)
             b = b[n:]
         except (IOError, OSError):
@@ -110,12 +131,12 @@ def read(fd):
 
 def out(*args):
     buf = "%s\r\n" % " ".join(args)
-    write(pty.STDOUT_FILENO, buf)
+    write(pty.STDOUT_FILENO, buf.encode('utf-8'))
 
 
 def err(*args):
     buf = "%s\r\n" % " ".join(args)
-    write(pty.STDERR_FILENO, buf)
+    write(pty.STDERR_FILENO, buf.encode('utf-8'))
 
 
 def die(*args):
@@ -287,7 +308,7 @@ class Flootty(object):
         self.reconnect_timeout = None
 
         self.buf_out = collections.deque()
-        self.buf_in = ''
+        self.buf_in = b''
 
         self.host = options.host
         self.port = int(options.port)
@@ -315,6 +336,19 @@ class Flootty(object):
             self.writers.add(fileno)
         if fd.errer:
             self.errers.add(fileno)
+
+    def remove_fd(self, fileno):
+        fd = self.fds[fileno]
+        if fd.reader:
+            self.readers.remove(fileno)
+        if fd.writer:
+            self.writers.remove(fileno)
+        if fd.errer:
+            self.errers.remove(fileno)
+        try:
+            del self.fds[fileno]
+        except IndexError:
+            pass
 
     def transport(self, name, data):
         data['name'] = name
@@ -355,7 +389,7 @@ class Flootty(object):
                         raise Exception('no handler for fd: %s %s' % (fd, attr))
 
     def cloud_read(self, fd):
-        buf = ''
+        buf = b''
         try:
             while True:
                 d = self.sock.recv(FD_READ_BYTES)
@@ -398,10 +432,10 @@ class Flootty(object):
     def handle(self, req):
         self.buf_in += req
         while True:
-            before, sep, after = self.buf_in.partition('\n')
+            before, sep, after = self.buf_in.partition(b'\n')
             if not sep:
                 break
-            data = json.loads(before, encoding='utf-8')
+            data = json.loads(before.decode('utf-8'), encoding='utf-8')
             self.handle_event(data)
             self.buf_in = after
 
@@ -437,7 +471,7 @@ class Flootty(object):
         elif not self.term_name:
             if len(ri['terms']) == 0:
                 out('There is no active terminal in this workspace. Do you want to share your terminal? (y/n)')
-                choice = raw_input().lower()
+                choice = input().lower()
                 self.term_name = "_"
                 if choice == 'y':
                     self.options.create = True
@@ -495,12 +529,12 @@ class Flootty(object):
             return
         if not self.options.create:
             return
-        self.handle_stdio(data['data'])
+        self.handle_stdio(data['data'].encode('utf-8'))
 
     def on_term_stdout(self, data):
         if data.get('id') != self.term_id:
             return
-        self.handle_stdio(data['data'])
+        self.handle_stdio(data['data'].encode('utf-8'))
 
     def reconnect(self):
         if self.reconnect_timeout:
@@ -523,9 +557,7 @@ class Flootty(object):
         self.buf_out = new_buf_out
 
         if self.sock:
-            self.readers.remove(self.sock.fileno())
-            self.writers.remove(self.sock.fileno())
-            self.errers.remove(self.sock.fileno())
+            self.remove_fd(self.sock.fileno())
             try:
                 self.sock.shutdown(2)
             except Exception:
@@ -571,7 +603,7 @@ class Flootty(object):
                 self.sock.do_handshake()
         except socket.error as e:
             out('Error connecting: %s.' % e)
-            self.reconnect()
+            return self.reconnect()
         self.sock.setblocking(0)
         out('Connected!')
         self.send_auth()
@@ -626,12 +658,13 @@ class Flootty(object):
         Create a spawned process.
         Based on the code for pty.spawn().
         '''
-        out('Successfully joined %s' % (self.room_url()))
 
         if self.master_fd:
             # reconnected. don't spawn a new shell
+            out('Reconnected to %s' % (self.room_url()))
             return
         shell = os.environ['SHELL']
+        out('Successfully joined %s' % (self.room_url()))
 
         self.child_pid, self.master_fd = pty.fork()
         if self.child_pid == pty.CHILD:
@@ -645,27 +678,27 @@ class Flootty(object):
         def slave_death(fd):
             die('Exiting flootty because child exited.')
 
-        self.extra_data = ''
+        self.extra_data = b''
 
         def stdout_write(fd):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
             data = self.extra_data + os.read(fd, FD_READ_BYTES)
-            self.extra_data = ""
+            self.extra_data = b''
             if data:
                 while True:
                     try:
                         data.decode('utf-8')
                     except UnicodeDecodeError:
-                        self.extra_data = data[-1] + self.extra_data
+                        self.extra_data = data[-1:] + self.extra_data
                         data = data[:-1]
                     else:
                         break
                     if len(self.extra_data) > 100:
                         die('not a valid utf-8 string: %s' % self.extra_data)
                 if data:
-                    self.transport("term_stdout", {'data': data, 'id': self.term_id})
+                    self.transport("term_stdout", {'data': data.decode('utf-8'), 'id': self.term_id})
                     write(pty.STDOUT_FILENO, data)
 
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
@@ -674,7 +707,7 @@ class Flootty(object):
             data = os.read(fd, FD_READ_BYTES)
             if data:
                 write(self.master_fd, data)
-                self.transport("term_stdin", {'data': data, 'id': self.term_id})
+                self.transport("term_stdin", {'data': data.decode('utf-8'), 'id': self.term_id})
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
@@ -691,6 +724,7 @@ class Flootty(object):
             color_reset = ""
 
         set_prompt_command = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
+        set_prompt_command = set_prompt_command.encode('utf-8')
         net_stdin_write(set_prompt_command)
 
     def _signal_winch(self, signum, frame):
