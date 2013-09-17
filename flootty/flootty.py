@@ -378,7 +378,11 @@ class Flootty(object):
             for position, fds in enumerate([_except, _in, _out]):
                 attr = attrs[position]
                 for fd in fds:
-                    handler = self.fds[fd][attr]
+                    # the handler can remove itself from self.fds...
+                    handler = self.fds.get(fd)
+                    if handler is None:
+                        continue
+                    handler = handler[attr]
                     if handler:
                         handler(fd)
                     else:
