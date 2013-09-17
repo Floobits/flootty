@@ -23,6 +23,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+# boilerplate to allow running as script directly
+if __name__ == "__main__" and __package__ is None:
+    import sys
+    import os
+    # The following assumes the script is in the top level of the package
+    # directory.  We use dirname() to help get the parent directory to add to
+    # sys.path, so that we can import the current package.  This is necessary
+    # since when invoked directly, the 'current' package is not automatically
+    # imported.
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, parent_dir)
+    import flootty
+    assert flootty
+    __package__ = str("flootty")
+    del sys, os
+
 import atexit
 import fcntl
 import json
@@ -42,16 +58,22 @@ import re
 import collections
 
 try:
+    import __builtin__
+    input = getattr(__builtin__, 'raw_input')
+except (ImportError, AttributeError):
+    pass
+
+
+try:
     from urllib.parse import urlparse
     assert urlparse
 except ImportError:
     from urlparse import urlparse
 
 try:
-    from . import api, cert, utils
-    assert api and cert and utils
+    from . import cert, utils
+    assert cert and utils
 except (ImportError, ValueError):
-    import api
     import cert
     import utils
 
@@ -110,12 +132,12 @@ def read(fd):
 
 def out(*args):
     buf = "%s\r\n" % " ".join(args)
-    write(pty.STDOUT_FILENO, buf)
+    write(pty.STDOUT_FILENO, buf.encode('utf-8'))
 
 
 def err(*args):
     buf = "%s\r\n" % " ".join(args)
-    write(pty.STDERR_FILENO, buf)
+    write(pty.STDERR_FILENO, buf.encode('utf-8'))
 
 
 def die(*args):
@@ -316,6 +338,16 @@ class Flootty(object):
         if fd.errer:
             self.errers.add(fileno)
 
+    def remove_fd(self, fileno):
+        fd = self.fds[fileno]
+        if fd.reader:
+            self.readers.remove(fileno)
+        if fd.writer:
+            self.writers.remove(fileno)
+        if fd.errer:
+            self.errers.remove(fileno)
+        del self.fds[fileno]
+
     def transport(self, name, data):
         data['name'] = name
         self.buf_out.append(data)
@@ -437,7 +469,7 @@ class Flootty(object):
         elif not self.term_name:
             if len(ri['terms']) == 0:
                 out('There is no active terminal in this workspace. Do you want to share your terminal? (y/n)')
-                choice = raw_input().lower()
+                choice = input().lower()
                 self.term_name = "_"
                 if choice == 'y':
                     self.options.create = True
@@ -523,9 +555,7 @@ class Flootty(object):
         self.buf_out = new_buf_out
 
         if self.sock:
-            self.readers.remove(self.sock.fileno())
-            self.writers.remove(self.sock.fileno())
-            self.errers.remove(self.sock.fileno())
+            self.remove_fd(self.sock.fileno())
             try:
                 self.sock.shutdown(2)
             except Exception:
@@ -626,12 +656,13 @@ class Flootty(object):
         Create a spawned process.
         Based on the code for pty.spawn().
         '''
-        out('Successfully joined %s' % (self.room_url()))
 
         if self.master_fd:
             # reconnected. don't spawn a new shell
+            out('Reconnected to %s' % (self.room_url()))
             return
         shell = os.environ['SHELL']
+        out('Successfully joined %s' % (self.room_url()))
 
         self.child_pid, self.master_fd = pty.fork()
         if self.child_pid == pty.CHILD:
