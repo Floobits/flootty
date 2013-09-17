@@ -309,7 +309,7 @@ class Flootty(object):
         self.reconnect_timeout = None
 
         self.buf_out = collections.deque()
-        self.buf_in = ''
+        self.buf_in = b''
 
         self.host = options.host
         self.port = int(options.port)
@@ -387,7 +387,7 @@ class Flootty(object):
                         raise Exception('no handler for fd: %s %s' % (fd, attr))
 
     def cloud_read(self, fd):
-        buf = ''
+        buf = b''
         try:
             while True:
                 d = self.sock.recv(FD_READ_BYTES)
@@ -430,10 +430,10 @@ class Flootty(object):
     def handle(self, req):
         self.buf_in += req
         while True:
-            before, sep, after = self.buf_in.partition('\n')
+            before, sep, after = self.buf_in.partition(b'\n')
             if not sep:
                 break
-            data = json.loads(before, encoding='utf-8')
+            data = json.loads(before.decode('utf-8'), encoding='utf-8')
             self.handle_event(data)
             self.buf_in = after
 
@@ -676,14 +676,14 @@ class Flootty(object):
         def slave_death(fd):
             die('Exiting flootty because child exited.')
 
-        self.extra_data = ''
+        self.extra_data = b''
 
         def stdout_write(fd):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
             data = self.extra_data + os.read(fd, FD_READ_BYTES)
-            self.extra_data = ""
+            self.extra_data = b''
             if data:
                 while True:
                     try:
@@ -696,7 +696,7 @@ class Flootty(object):
                     if len(self.extra_data) > 100:
                         die('not a valid utf-8 string: %s' % self.extra_data)
                 if data:
-                    self.transport("term_stdout", {'data': data, 'id': self.term_id})
+                    self.transport("term_stdout", {'data': data.decode('utf-8'), 'id': self.term_id})
                     write(pty.STDOUT_FILENO, data)
 
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
@@ -705,7 +705,7 @@ class Flootty(object):
             data = os.read(fd, FD_READ_BYTES)
             if data:
                 write(self.master_fd, data)
-                self.transport("term_stdin", {'data': data, 'id': self.term_id})
+                self.transport("term_stdin", {'data': data.decode('utf-8'), 'id': self.term_id})
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
@@ -722,6 +722,7 @@ class Flootty(object):
             color_reset = ""
 
         set_prompt_command = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
+        set_prompt_command = set_prompt_command.encode('utf-8')
         net_stdin_write(set_prompt_command)
 
     def _signal_winch(self, signum, frame):
