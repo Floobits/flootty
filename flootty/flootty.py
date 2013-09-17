@@ -110,7 +110,6 @@ def read_floorc():
 def write(fd, b):
     while len(b):
         try:
-            # TODO: fix this for python3
             n = os.write(fd, b)
             b = b[n:]
         except (IOError, OSError):
