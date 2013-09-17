@@ -338,16 +338,12 @@ class Flootty(object):
             self.errers.add(fileno)
 
     def remove_fd(self, fileno):
-        fd = self.fds[fileno]
-        if fd.reader:
-            self.readers.remove(fileno)
-        if fd.writer:
-            self.writers.remove(fileno)
-        if fd.errer:
-            self.errers.remove(fileno)
+        self.readers.discard(fileno)
+        self.writers.discard(fileno)
+        self.errers.discard(fileno)
         try:
             del self.fds[fileno]
-        except IndexError:
+        except KeyError:
             pass
 
     def transport(self, name, data):
