@@ -270,6 +270,7 @@ def main():
             if len(now_editing) == 1:
                 options.room = now_editing[0]['name']
                 options.owner = now_editing[0]['owner']
+            # TODO: list possible workspaces to join if > 1 is active
         except Exception as e:
             raise e
 
