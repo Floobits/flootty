@@ -113,9 +113,11 @@ def read_floorc():
 
 
 def write(fd, b):
+    if (not PY2) and isinstance(b, str):
+            b = b.encode('utf-8')
     while len(b):
         try:
-            n = os.write(fd, b.encode('utf-8'))
+            n = os.write(fd, b)
             b = b[n:]
         except (IOError, OSError):
             pass
