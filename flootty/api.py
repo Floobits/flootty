@@ -56,6 +56,11 @@ def get_workspaces():
     return api_request(api_url)
 
 
+def get_now_editing_workspaces():
+    api_url = 'https://%s/api/workspaces/now_editing/' % (G.DEFAULT_HOST)
+    return api_request(api_url)
+
+
 def get_orgs():
     api_url = 'https://%s/api/orgs/' % (G.DEFAULT_HOST)
     return api_request(api_url)
