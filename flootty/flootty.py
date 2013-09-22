@@ -57,6 +57,9 @@ import signal
 import re
 import collections
 
+PY2 = sys.version_info < (3, 0)
+
+
 try:
     import __builtin__
     input = getattr(__builtin__, 'raw_input')
@@ -71,10 +74,12 @@ except ImportError:
     from urlparse import urlparse
 
 try:
-    from . import cert, utils
-    assert cert and utils
+    from . import api, cert, shared as G, utils
+    assert api and cert and G and utils
 except (ImportError, ValueError):
+    import api
     import cert
+    import shared as G
     import utils
 
 
@@ -110,14 +115,14 @@ def read_floorc():
 def write(fd, b):
     while len(b):
         try:
-            n = os.write(fd, b)
+            n = os.write(fd, b.encode('utf-8'))
             b = b[n:]
         except (IOError, OSError):
             pass
 
 
 def read(fd):
-    buf = ''
+    buf = b''
     while True:
         try:
             d = os.read(fd, FD_READ_BYTES)
@@ -131,12 +136,12 @@ def read(fd):
 
 def out(*args):
     buf = "%s\r\n" % " ".join(args)
-    write(pty.STDOUT_FILENO, buf.encode('utf-8'))
+    write(pty.STDOUT_FILENO, buf)
 
 
 def err(*args):
     buf = "%s\r\n" % " ".join(args)
-    write(pty.STDERR_FILENO, buf.encode('utf-8'))
+    write(pty.STDERR_FILENO, buf)
 
 
 def die(*args):
@@ -228,6 +233,9 @@ def main():
 
     options, args = parser.parse_args()
 
+    G.USERNAME = options.username
+    G.SECRET = options.secret
+
     default_term_name = ""
     if options.create:
         default_term_name = "_"
@@ -254,6 +262,16 @@ def main():
             options.port = floo.get('port')
         if not options.host:
             options.host = floo.get('host')
+
+    if not options.room or not options.owner:
+        try:
+            now_editing = api.get_now_editing_workspaces()
+            now_editing = json.loads(now_editing.read().decode('utf-8'))
+            if len(now_editing) == 1:
+                options.room = now_editing[0]['name']
+                options.owner = now_editing[0]['owner']
+        except Exception as e:
+            raise e
 
     if options.list:
         if len(term_name) != 0:
@@ -412,10 +430,11 @@ class Flootty(object):
         try:
             while True:
                 item = self.buf_out.popleft()
-                if self.authed:
-                    self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
-                elif item['name'] == 'auth':
-                    self.sock.sendall((json.dumps(item) + '\n').encode('utf-8'))
+                data = json.dumps(item) + '\n'
+                if self.authed or item['name'] == 'auth':
+                    if not PY2:
+                        data = data.encode('utf-8')
+                    self.sock.sendall(data)
                 else:
                     new_buf_out.append(item)
         except socket.error:
@@ -480,7 +499,7 @@ class Flootty(object):
                 else:
                     die('If you ever change your mind, you can share your terminal using the --create [super_awesome_name] flag.')
             elif len(ri['terms']) == 1:
-                term_id, term = ri['terms'].items()[0]
+                term_id, term = list(ri['terms'].items())[0]
                 self.term_id = int(term_id)
                 self.term_name = term['term_name']
             else:
@@ -529,12 +548,12 @@ class Flootty(object):
             return
         if not self.options.create:
             return
-        self.handle_stdio(data['data'].encode('utf-8'))
+        self.handle_stdio(data['data'])
 
     def on_term_stdout(self, data):
         if data.get('id') != self.term_id:
             return
-        self.handle_stdio(data['data'].encode('utf-8'))
+        self.handle_stdio(data['data'])
 
     def reconnect(self):
         if self.reconnect_timeout:
@@ -639,6 +658,8 @@ class Flootty(object):
         def ship_stdin(fd):
             data = read(fd)
             if data:
+                if not PY2:
+                    data = data.decode('utf-8')
                 self.transport("term_stdin", {'data': data, 'id': self.term_id})
 
         if 'term_stdin' in self.ri['perms']:
@@ -648,7 +669,7 @@ class Flootty(object):
             out('You do not have permission to write to this terminal.')
 
         def stdout_write(buf):
-            write(stdout, buf.encode('utf-8'))
+            write(stdout, buf)
 
         self.handle_stdio = stdout_write
         self._set_pty_size(self.ri['terms'][str(self.term_id)]['size'])
@@ -724,7 +745,6 @@ class Flootty(object):
             color_reset = ""
 
         set_prompt_command = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
-        set_prompt_command = set_prompt_command.encode('utf-8')
         net_stdin_write(set_prompt_command)
 
     def _signal_winch(self, signum, frame):
