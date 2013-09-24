@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='Flootty',
-      version='0.20',
+      version='0.21',
       description='Floobits collaborative terminal',
       author='Floobits',
       author_email='info@floobits.com',
@@ -18,7 +18,8 @@ setup(name='Flootty',
               'flootty = flootty.flootty:main',
           ]},
       classifiers=[
-          'Development Status :: 4 - Beta',
+          'Development Status :: 5 - Production/Stable',
+          'Environment :: Console',
           'Intended Audience :: Developers',
           'License :: OSI Approved :: Apache Software License',
           'Topic :: Terminals',
