@@ -747,10 +747,11 @@ class Flootty(object):
         # TODO: other shells probably use weird color escapes
         if 'zsh' in shell:
             color_start = "%{%F{green}%}"
-            color_reset = ""
+            color_reset = "%{%f%}"
 
-        set_prompt_command = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
-        net_stdin_write(set_prompt_command)
+        # Set prompt
+        cmd = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
+        net_stdin_write(cmd)
 
     def _signal_winch(self, signum, frame):
         '''
