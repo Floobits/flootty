@@ -710,8 +710,14 @@ class Flootty(object):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
-            data = self.extra_data + os.read(fd, FD_READ_BYTES)
+            data = None
+            try:
+                data = self.extra_data + os.read(fd, FD_READ_BYTES)
+            except:
+                pass
+
             self.extra_data = b''
+
             if data:
                 while True:
                     try:
@@ -723,9 +729,13 @@ class Flootty(object):
                         break
                     if len(self.extra_data) > 100:
                         die('not a valid utf-8 string: %s' % self.extra_data)
-                if data:
-                    self.transport("term_stdout", {'data': data.decode('utf-8'), 'id': self.term_id})
-                    write(pty.STDOUT_FILENO, data)
+
+                self.transport("term_stdout", {'data': data.decode('utf-8'), 'id': self.term_id})
+                write(pty.STDOUT_FILENO, data)
+
+            else:
+                die("Time to go!")
+
 
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
 
