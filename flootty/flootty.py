@@ -710,32 +710,30 @@ class Flootty(object):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
-            data = None
+
             try:
                 data = self.extra_data + os.read(fd, FD_READ_BYTES)
             except:
-                pass
+                data = None
+
+            if not data:
+                return die("Time to go!")
 
             self.extra_data = b''
 
-            if data:
-                while True:
-                    try:
-                        data.decode('utf-8')
-                    except UnicodeDecodeError:
-                        self.extra_data = data[-1:] + self.extra_data
-                        data = data[:-1]
-                    else:
-                        break
-                    if len(self.extra_data) > 100:
-                        die('not a valid utf-8 string: %s' % self.extra_data)
+            while True:
+                try:
+                    data.decode('utf-8')
+                except UnicodeDecodeError:
+                    self.extra_data = data[-1:] + self.extra_data
+                    data = data[:-1]
+                else:
+                    break
+                if len(self.extra_data) > 100:
+                    die('not a valid utf-8 string: %s' % self.extra_data)
 
-                self.transport("term_stdout", {'data': data.decode('utf-8'), 'id': self.term_id})
-                write(pty.STDOUT_FILENO, data)
-
-            else:
-                die("Time to go!")
-
+            self.transport("term_stdout", {'data': data.decode('utf-8'), 'id': self.term_id})
+            write(pty.STDOUT_FILENO, data)
 
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
 
@@ -743,7 +741,7 @@ class Flootty(object):
             data = os.read(fd, FD_READ_BYTES)
             if data:
                 write(self.master_fd, data)
-                self.transport("term_stdin", {'data': data.decode('utf-8'), 'id': self.term_id})
+                self.transport("term_stdin", {'data': ' ', 'id': self.term_id})
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
