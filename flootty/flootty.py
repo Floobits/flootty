@@ -55,6 +55,7 @@ import termios
 import tty
 import signal
 import re
+import time
 import collections
 
 PY2 = sys.version_info < (3, 0)
@@ -344,6 +345,7 @@ class Flootty(object):
         self.term_id = None
         self.orig_stdin_atts = None
         self.orig_stdout_atts = None
+        self.last_stdin = 0
 
     def add_fd(self, fileno, **kwargs):
         try:
@@ -696,7 +698,7 @@ class Flootty(object):
         if self.child_pid == pty.CHILD:
             os.execlp(shell, shell, '--login')
 
-        self.orig_stdin_atts = tty.tcgetattr(sys.stdin)
+        self.orig_stdin_atts = tty.tcgetattr(sys.stdin.fileno())
         tty.setraw(pty.STDIN_FILENO)
         self.original_wincher = signal.signal(signal.SIGWINCH, self._signal_winch)
         self._set_pty_size()
@@ -741,7 +743,12 @@ class Flootty(object):
             data = os.read(fd, FD_READ_BYTES)
             if data:
                 write(self.master_fd, data)
-                self.transport("term_stdin", {'data': ' ', 'id': self.term_id})
+
+                now = time.time()
+                # Only send stdin event if it's been > 2 seconds. This prevents people from figuring out password lengths
+                if now - self.last_stdin > 2:
+                    self.transport("term_stdin", {'data': ' ', 'id': self.term_id})
+                    self.last_stdin = now
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
