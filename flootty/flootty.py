@@ -346,6 +346,7 @@ class Flootty(object):
         self.orig_stdin_atts = None
         self.orig_stdout_atts = None
         self.last_stdin = 0
+        self.reconnect_delay = INITIAL_RECONNECT_DELAY
 
     def add_fd(self, fileno, **kwargs):
         try:
@@ -696,7 +697,7 @@ class Flootty(object):
 
         self.child_pid, self.master_fd = pty.fork()
         if self.child_pid == pty.CHILD:
-            os.execlp(shell, shell, '--login')
+            os.execlpe(shell, shell, '--login', os.environ)
 
         self.orig_stdin_atts = tty.tcgetattr(sys.stdin.fileno())
         tty.setraw(pty.STDIN_FILENO)
