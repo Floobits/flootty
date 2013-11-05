@@ -261,6 +261,8 @@ def main():
                     floo = parse_url(floo['url'])
                 except Exception:
                     pass
+                else:
+                    break
         options.room = floo.get('room')
         options.owner = floo.get('owner')
         if not options.port:
