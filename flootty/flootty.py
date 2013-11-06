@@ -225,6 +225,12 @@ def main():
                       action="store_true",
                       help="List all ptys in the workspace")
 
+    parser.add_option("--safe",
+                      dest="safe",
+                      default=False,
+                      action="store_true",
+                      help="Safer terminal. Other users can type all characters, but they can't hit enter to run commands.")
+
     parser.add_option("--no-ssl",
                       dest="use_ssl",
                       default=True,
@@ -756,6 +762,11 @@ class Flootty(object):
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
         def net_stdin_write(buf):
+            if self.options.safe:
+                buf = buf.replace('\n', '')
+                buf = buf.replace('\r', '')
+                if not buf:
+                    return
             write(self.master_fd, buf)
 
         self.handle_stdio = net_stdin_write
@@ -769,7 +780,7 @@ class Flootty(object):
 
         # Set prompt
         cmd = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
-        net_stdin_write(cmd)
+        write(self.master_fd, cmd)
 
     def _signal_winch(self, signum, frame):
         '''
