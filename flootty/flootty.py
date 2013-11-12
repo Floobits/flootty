@@ -242,12 +242,20 @@ def main():
                       default=None,
                       help="The URL of the workspace to connect to. This is a convenience for copy-pasting from the browser.")
 
+    parser.add_option("--attach",
+                      dest="attach",
+                      default=None,
+                      help="Attach to an existing tty")
+
     options, args = parser.parse_args()
 
     G.USERNAME = options.username
     G.SECRET = options.secret
 
     default_term_name = ""
+    # TODO: use an enum for attach/join/create
+    if options.attach:
+        options.create = True
     if options.create:
         default_term_name = "_"
 
@@ -703,9 +711,13 @@ class Flootty(object):
         shell = os.environ['SHELL']
         out('Successfully joined %s' % (self.room_url()))
 
-        self.child_pid, self.master_fd = pty.fork()
-        if self.child_pid == pty.CHILD:
-            os.execlpe(shell, shell, '--login', os.environ)
+        if self.options.attach:
+            # windows: os.O_ASYNC | os.O_BINARY
+            self.master_fd = os.open(self.options.attach, os.O_RDWR | os.O_NONBLOCK)
+        else:
+            self.child_pid, self.master_fd = pty.fork()
+            if self.child_pid == pty.CHILD:
+                os.execlpe(shell, shell, '--login', os.environ)
 
         self.orig_stdin_atts = tty.tcgetattr(sys.stdin.fileno())
         tty.setraw(pty.STDIN_FILENO)
