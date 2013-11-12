@@ -566,7 +566,7 @@ class Flootty(object):
             return
         if not self.options.create:
             return
-        self.handle_stdio(data['data'])
+        self.handle_stdio(base64.b64decode(data['data']))
 
     def on_term_stdout(self, data):
         if data.get('id') != self.term_id:
@@ -676,9 +676,7 @@ class Flootty(object):
         def ship_stdin(fd):
             data = read(fd)
             if data:
-                if not PY2:
-                    data = data.decode('utf-8')
-                self.transport("term_stdin", {'data': data, 'id': self.term_id})
+                self.transport("term_stdin", {'data': base64.b64encode(data).decode('utf8'), 'id': self.term_id})
 
         if 'term_stdin' in self.ri['perms']:
             out('You have permission to write to this terminal. Remember: With great power comes great responsibility.')
@@ -687,8 +685,7 @@ class Flootty(object):
             out('You do not have permission to write to this terminal.')
 
         def stdout_write(buf):
-            buf = base64.b64decode(buf)
-            write(stdout, buf)
+            write(stdout, base64.b64decode(buf))
 
         self.handle_stdio = stdout_write
         self._set_pty_size(self.ri['terms'][str(self.term_id)]['size'])
