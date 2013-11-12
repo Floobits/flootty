@@ -56,6 +56,7 @@ import tty
 import signal
 import re
 import time
+import base64
 import collections
 
 PY2 = sys.version_info < (3, 0)
@@ -277,15 +278,12 @@ def main():
             options.host = floo.get('host')
 
     if not options.room or not options.owner:
-        try:
-            now_editing = api.get_now_editing_workspaces()
-            now_editing = json.loads(now_editing.read().decode('utf-8'))
-            if len(now_editing) == 1:
-                options.room = now_editing[0]['name']
-                options.owner = now_editing[0]['owner']
-            # TODO: list possible workspaces to join if > 1 is active
-        except Exception as e:
-            raise e
+        now_editing = api.get_now_editing_workspaces()
+        now_editing = json.loads(now_editing.read().decode('utf-8'))
+        if len(now_editing) == 1:
+            options.room = now_editing[0]['name']
+            options.owner = now_editing[0]['owner']
+        # TODO: list possible workspaces to join if > 1 is active
 
     if options.list:
         if len(term_name) != 0:
@@ -480,7 +478,6 @@ class Flootty(object):
             return out('no name in data?!?')
         func = getattr(self, "on_%s" % (name), None)
         if not func:
-            #out('unknown name %s data: %s' % (name, data))
             return
         func(data)
 
@@ -685,6 +682,7 @@ class Flootty(object):
             out('You do not have permission to write to this terminal.')
 
         def stdout_write(buf):
+            buf = base64.b64decode(buf)
             write(stdout, buf)
 
         self.handle_stdio = stdout_write
@@ -721,29 +719,14 @@ class Flootty(object):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
-
             try:
                 data = self.extra_data + os.read(fd, FD_READ_BYTES)
             except:
                 data = None
-
             if not data:
                 return die("Time to go!")
 
-            self.extra_data = b''
-
-            while True:
-                try:
-                    data.decode('utf-8')
-                except UnicodeDecodeError:
-                    self.extra_data = data[-1:] + self.extra_data
-                    data = data[:-1]
-                else:
-                    break
-                if len(self.extra_data) > 100:
-                    die('not a valid utf-8 string: %s' % self.extra_data)
-
-            self.transport("term_stdout", {'data': data.decode('utf-8'), 'id': self.term_id})
+            self.transport("term_stdout", {'data': base64.b64encode(data).decode('utf8'), 'id': self.term_id})
             write(pty.STDOUT_FILENO, data)
 
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
