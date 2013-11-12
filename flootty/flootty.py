@@ -85,7 +85,7 @@ except (ImportError, ValueError):
     import utils
 
 
-PROTO_VERSION = '0.03'
+PROTO_VERSION = '0.1'
 CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
@@ -484,6 +484,15 @@ class Flootty(object):
     def on_room_info(self, ri):
         self.authed = True
         self.ri = ri
+
+        def list_terms(terms):
+            term_name = ""
+            for term_id, term in terms.items():
+                owner = str(term['owner'])
+                term_name = term['term_name']
+                out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]['username']))
+            return term_name
+
         if self.options.create:
             buf = self._get_pty_size()
             term_name = self.term_name
@@ -496,9 +505,7 @@ class Flootty(object):
             return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
         elif self.options.list:
             out('Terminals in %s::%s' % (self.owner, self.room))
-            for term_id, term in ri['terms'].items():
-                owner = str(term['owner'])
-                out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]['username']))
+            list_terms(ri['terms'])
             return die()
         elif not self.term_name:
             if len(ri['terms']) == 0:
@@ -517,10 +524,8 @@ class Flootty(object):
                 self.term_name = term['term_name']
             else:
                 out('More than one active term exists in this workspace.')
-                for term_id, term in ri['terms'].items():
-                    owner = str(term['owner'])
-                    out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
-                    die('Please pick a workspace like so: flootty [super_awesome_name]')
+                example_name = list_terms(ri['terms'])
+                die('Please pick a workspace like so: flootty %s' % example_name)
         else:
             for term_id, term in ri['terms'].items():
                 if term['term_name'] == self.term_name:
@@ -810,7 +815,6 @@ class Flootty(object):
         except Exception:
             pass
         print('ciao.')
-        sys.exit()
 
 if __name__ == '__main__':
     main()
