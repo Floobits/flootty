@@ -155,11 +155,11 @@ def die(*args):
     sys.exit(1)
 
 
-def parse_url(room_url):
+def parse_url(workspace_url):
     secure = True
     owner = None
-    room_name = None
-    parsed_url = urlparse(room_url)
+    workspace_name = None
+    parsed_url = urlparse(workspace_url)
     port = parsed_url.port
     if not port:
         port = 3448
@@ -167,16 +167,20 @@ def parse_url(room_url):
         if not port:
             port = 3148
         secure = False
-    result = re.match('^/r/([-\w]+)/([-\w]+)/?$', parsed_url.path)
+    result = re.match('^/([-\@\+\.\w]+)/([-\w]+)/?$', parsed_url.path)
+    if not result:
+        result = re.match('^/r/([-\@\+\.\w]+)/([-\w]+)/?$', parsed_url.path)
+
     if result:
-        (owner, room_name) = result.groups()
+        (owner, workspace_name) = result.groups()
     else:
-        raise ValueError('%s is not a valid Floobits URL' % room_url)
+        raise ValueError('%s is not a valid Floobits URL' % workspace_url)
+
     return {
         'host': parsed_url.hostname,
         'owner': owner,
         'port': port,
-        'room': room_name,
+        'workspace': workspace_name,
         'secure': secure,
     }
 
@@ -213,7 +217,7 @@ def main():
                       help="The terminal name to create")
 
     parser.add_option("-w", "--workspace",
-                      dest="room",
+                      dest="workspace",
                       help="The workspace name")
 
     parser.add_option("-o", "--owner",
@@ -239,7 +243,7 @@ def main():
                       help="Do not use this option unless you know what you are doing!")
 
     parser.add_option("--url",
-                      dest="room_url",
+                      dest="workspace_url",
                       default=None,
                       help="The URL of the workspace to connect to. This is a convenience for copy-pasting from the browser.")
 
@@ -254,13 +258,13 @@ def main():
 
     term_name = args and args[0] or default_term_name
 
-    if options.room and options.owner and options.room_url:
+    if options.workspace and options.owner and options.workspace_url:
         parser.error("You can either specify --workspace and --owner, or --url, but not both.")
 
-    if not options.room or not options.owner:
+    if not options.workspace or not options.owner:
         floo = {}
-        if options.room_url:
-            floo = parse_url(options.room_url)
+        if options.workspace_url:
+            floo = parse_url(options.workspace_url)
         else:
             for floo_path in walk_up(os.path.realpath('.')):
                 try:
@@ -270,18 +274,18 @@ def main():
                     pass
                 else:
                     break
-        options.room = floo.get('room')
+        options.workspace = floo.get('workspace')
         options.owner = floo.get('owner')
         if not options.port:
             options.port = floo.get('port')
         if not options.host:
             options.host = floo.get('host')
 
-    if not options.room or not options.owner:
+    if not options.workspace or not options.owner:
         now_editing = api.get_now_editing_workspaces()
         now_editing = json.loads(now_editing.read().decode('utf-8'))
         if len(now_editing) == 1:
-            options.room = now_editing[0]['name']
+            options.workspace = now_editing[0]['name']
             options.owner = now_editing[0]['owner']
         # TODO: list possible workspaces to join if > 1 is active
 
@@ -289,7 +293,7 @@ def main():
         if len(term_name) != 0:
             die("I don't understand why you gave me a positional argument.")
 
-    for opt in ['room', 'owner', 'username', 'secret']:
+    for opt in ['workspace', 'owner', 'username', 'secret']:
         if not getattr(options, opt):
             parser.error('%s not given' % opt)
 
@@ -342,7 +346,7 @@ class Flootty(object):
 
         self.host = options.host
         self.port = int(options.port)
-        self.room = options.room
+        self.workspace = options.workspace
         self.owner = options.owner
         self.options = options
         self.term_name = term_name
@@ -504,7 +508,7 @@ class Flootty(object):
             self.term_name = term_name
             return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
         elif self.options.list:
-            out('Terminals in %s::%s' % (self.owner, self.room))
+            out('Terminals in %s::%s' % (self.owner, self.workspace))
             list_terms(ri['terms'])
             return die()
         elif not self.term_name:
@@ -615,7 +619,7 @@ class Flootty(object):
             'name': 'auth',
             'username': self.options.username,
             'secret': self.options.secret,
-            'room': self.room,
+            'room': self.workspace,
             'room_owner': self.owner,
             'client': CLIENT,
             'platform': sys.platform,
@@ -647,7 +651,7 @@ class Flootty(object):
         self.add_fd(self.sock, reader=self.cloud_read, writer=self.cloud_write, errer=self.cloud_err, name='net')
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
 
-    def room_url(self):
+    def workspace_url(self):
         proto = {True: "https", False: "http"}
         proto_str = proto[self.options.use_ssl]
         port_str = ''
@@ -657,10 +661,10 @@ class Flootty(object):
         else:
             if self.port != 3148:
                 port_str = ':%s' % self.port
-        return '%s://%s%s/r/%s/%s/' % (proto_str, self.host, port_str, self.owner, self.room)
+        return '%s://%s%s/%s/%s/' % (proto_str, self.host, port_str, self.owner, self.workspace)
 
     def join_term(self):
-        out('Successfully joined %s' % (self.room_url()))
+        out('Successfully joined %s' % (self.workspace_url()))
         self.orig_stdout_atts = tty.tcgetattr(sys.stdout)
         stdout = sys.stdout.fileno()
         tty.setraw(stdout)
@@ -698,10 +702,10 @@ class Flootty(object):
 
         if self.master_fd:
             # reconnected. don't spawn a new shell
-            out('Reconnected to %s' % (self.room_url()))
+            out('Reconnected to %s' % (self.workspace_url()))
             return
         shell = os.environ['SHELL']
-        out('Successfully joined %s' % (self.room_url()))
+        out('Successfully joined %s' % (self.workspace_url()))
 
         self.child_pid, self.master_fd = pty.fork()
         if self.child_pid == pty.CHILD:
@@ -764,7 +768,7 @@ class Flootty(object):
             color_reset = "%{%f%}"
 
         # Set prompt
-        cmd = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.room, self.term_name, color_reset)
+        cmd = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.workspace, self.term_name, color_reset)
         write(self.master_fd, cmd)
 
     def _signal_winch(self, signum, frame):
