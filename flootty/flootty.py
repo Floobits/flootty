@@ -56,6 +56,7 @@ import tty
 import signal
 import re
 import time
+import base64
 import collections
 
 PY2 = sys.version_info < (3, 0)
@@ -84,7 +85,7 @@ except (ImportError, ValueError):
     import utils
 
 
-PROTO_VERSION = '0.03'
+PROTO_VERSION = '0.1'
 CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
@@ -277,15 +278,12 @@ def main():
             options.host = floo.get('host')
 
     if not options.room or not options.owner:
-        try:
-            now_editing = api.get_now_editing_workspaces()
-            now_editing = json.loads(now_editing.read().decode('utf-8'))
-            if len(now_editing) == 1:
-                options.room = now_editing[0]['name']
-                options.owner = now_editing[0]['owner']
-            # TODO: list possible workspaces to join if > 1 is active
-        except Exception as e:
-            raise e
+        now_editing = api.get_now_editing_workspaces()
+        now_editing = json.loads(now_editing.read().decode('utf-8'))
+        if len(now_editing) == 1:
+            options.room = now_editing[0]['name']
+            options.owner = now_editing[0]['owner']
+        # TODO: list possible workspaces to join if > 1 is active
 
     if options.list:
         if len(term_name) != 0:
@@ -480,13 +478,21 @@ class Flootty(object):
             return out('no name in data?!?')
         func = getattr(self, "on_%s" % (name), None)
         if not func:
-            #out('unknown name %s data: %s' % (name, data))
             return
         func(data)
 
     def on_room_info(self, ri):
         self.authed = True
         self.ri = ri
+
+        def list_terms(terms):
+            term_name = ""
+            for term_id, term in terms.items():
+                owner = str(term['owner'])
+                term_name = term['term_name']
+                out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]['username']))
+            return term_name
+
         if self.options.create:
             buf = self._get_pty_size()
             term_name = self.term_name
@@ -499,9 +505,7 @@ class Flootty(object):
             return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
         elif self.options.list:
             out('Terminals in %s::%s' % (self.owner, self.room))
-            for term_id, term in ri['terms'].items():
-                owner = str(term['owner'])
-                out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]['username']))
+            list_terms(ri['terms'])
             return die()
         elif not self.term_name:
             if len(ri['terms']) == 0:
@@ -520,10 +524,8 @@ class Flootty(object):
                 self.term_name = term['term_name']
             else:
                 out('More than one active term exists in this workspace.')
-                for term_id, term in ri['terms'].items():
-                    owner = str(term['owner'])
-                    out('terminal %s created by %s' % (term['term_name'], ri['users'][owner]))
-                    die('Please pick a workspace like so: flootty [super_awesome_name]')
+                example_name = list_terms(ri['terms'])
+                die('Please pick a workspace like so: flootty %s' % example_name)
         else:
             for term_id, term in ri['terms'].items():
                 if term['term_name'] == self.term_name:
@@ -564,7 +566,7 @@ class Flootty(object):
             return
         if not self.options.create:
             return
-        self.handle_stdio(data['data'])
+        self.handle_stdio(base64.b64decode(data['data']))
 
     def on_term_stdout(self, data):
         if data.get('id') != self.term_id:
@@ -674,9 +676,7 @@ class Flootty(object):
         def ship_stdin(fd):
             data = read(fd)
             if data:
-                if not PY2:
-                    data = data.decode('utf-8')
-                self.transport("term_stdin", {'data': data, 'id': self.term_id})
+                self.transport("term_stdin", {'data': base64.b64encode(data).decode('utf8'), 'id': self.term_id})
 
         if 'term_stdin' in self.ri['perms']:
             out('You have permission to write to this terminal. Remember: With great power comes great responsibility.')
@@ -685,7 +685,7 @@ class Flootty(object):
             out('You do not have permission to write to this terminal.')
 
         def stdout_write(buf):
-            write(stdout, buf)
+            write(stdout, base64.b64decode(buf))
 
         self.handle_stdio = stdout_write
         self._set_pty_size(self.ri['terms'][str(self.term_id)]['size'])
@@ -721,29 +721,14 @@ class Flootty(object):
             '''
             Called when there is data to be sent from the child process back to the user.
             '''
-
             try:
                 data = self.extra_data + os.read(fd, FD_READ_BYTES)
             except:
                 data = None
-
             if not data:
                 return die("Time to go!")
 
-            self.extra_data = b''
-
-            while True:
-                try:
-                    data.decode('utf-8')
-                except UnicodeDecodeError:
-                    self.extra_data = data[-1:] + self.extra_data
-                    data = data[:-1]
-                else:
-                    break
-                if len(self.extra_data) > 100:
-                    die('not a valid utf-8 string: %s' % self.extra_data)
-
-            self.transport("term_stdout", {'data': data.decode('utf-8'), 'id': self.term_id})
+            self.transport("term_stdout", {'data': base64.b64encode(data).decode('utf8'), 'id': self.term_id})
             write(pty.STDOUT_FILENO, data)
 
         self.add_fd(self.master_fd, reader=stdout_write, errer=slave_death, name='create_term_stdout_write')
@@ -827,7 +812,6 @@ class Flootty(object):
         except Exception:
             pass
         print('ciao.')
-        sys.exit()
 
 if __name__ == '__main__':
     main()
