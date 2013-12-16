@@ -9,7 +9,7 @@ We also added a pty to our browser based editor for those without a terminal.
 
 ## Installation
 
-	pip install flootty
+    pip install Flootty
 
 If you prefer, you can clone the git repo and run:
 
