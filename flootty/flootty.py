@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+# coding: utf-8
+try:
+    unicode()
+except NameError:
+    unicode = str
 
 # Heavily influenced by the work of Joshua D. Bartlett
 # see: http://sqizit.bartletts.id.au/2011/02/14/pseudo-terminals-in-python/
@@ -230,11 +235,11 @@ def main():
                       action="store_true",
                       help="List all ptys in the workspace")
 
-    parser.add_option("--safe",
+    parser.add_option("--unsafe",
                       dest="safe",
-                      default=False,
-                      action="store_true",
-                      help="Safer terminal. Other users can type all characters, but they can't hit enter to run commands.")
+                      default=True,
+                      action="store_false",
+                      help="Less safe terminal. This allows other users to send enter.")
 
     parser.add_option("--no-ssl",
                       dest="use_ssl",
