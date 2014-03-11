@@ -233,13 +233,13 @@ def main():
                       dest="list",
                       default=False,
                       action="store_true",
-                      help="List all ptys in the workspace")
+                      help="List all terminals in the workspace")
 
     parser.add_option("--unsafe",
                       dest="safe",
                       default=True,
                       action="store_false",
-                      help="Less safe terminal. This allows other users to send enter.")
+                      help="Less safe terminal. This allows other users to send enter in your terminal.")
 
     parser.add_option("--no-ssl",
                       dest="use_ssl",
@@ -279,8 +279,10 @@ def main():
                     pass
                 else:
                     break
+        options.host = floo.get('host')
         options.workspace = floo.get('workspace')
         options.owner = floo.get('owner')
+        options.use_ssl = floo.get('secure')
         if not options.port:
             options.port = floo.get('port')
         if not options.host:
