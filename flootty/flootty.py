@@ -666,7 +666,7 @@ class Flootty(object):
         else:
             if self.port != 3148:
                 port_str = ':%s' % self.port
-        return '%s://%s%s/%s/%s/' % (proto_str, self.host, port_str, self.owner, self.workspace)
+        return '%s://%s%s/%s/%s' % (proto_str, self.host, port_str, self.owner, self.workspace)
 
     def join_term(self):
         out('Successfully joined %s' % (self.workspace_url()))
