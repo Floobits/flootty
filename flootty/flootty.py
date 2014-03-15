@@ -548,7 +548,11 @@ class Flootty(object):
         return self.join_term()
 
     def on_disconnect(self, data):
-        die('You were disconnected because: %s.' % data.get('reason', '').lower())
+        reason = data.get('reason')
+        out('Disconnected by server!')
+        if reason:
+            die('Reason: %s' % reason)
+        self.reconnect()
 
     def on_error(self, data):
         if self.term_id is None:
