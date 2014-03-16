@@ -49,7 +49,7 @@ def cancel_timeout(timeout_id):
 def call_timeouts():
     now = time.time()
     to_remove = []
-    for t, tos in timeouts.items():
+    for t, tos in timeouts.copy().items():
         if now >= t:
             for timeout in tos:
                 timeout()
