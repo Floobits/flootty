@@ -164,7 +164,7 @@ def prejoin_workspace(workspace_url, dir_to_share, api_args):
     try:
         w = get_workspace_by_url(workspace_url)
     except Exception as e:
-        editor.error_message('Error: %s' % str(e))
+        editor.error_message('Error opening url %s: %s' % (workspace_url, str(e)))
         return False
 
     if w.code >= 400:
@@ -185,7 +185,9 @@ def prejoin_workspace(workspace_url, dir_to_share, api_args):
 
     msg.debug('workspace: %s', json.dumps(w.body))
     anon_perms = w.body.get('perms', {}).get('AnonymousUser', [])
-    new_anon_perms = api_args.get('perms').get('AnonymousUser', [])
+    msg.log('api args: %s' % api_args)
+    # TODO: not sure if this is correct. may want to default to public perms
+    new_anon_perms = api_args.get('perms', {}).get('AnonymousUser', [])
     # TODO: prompt/alert user if going from private to public
     if set(anon_perms) != set(new_anon_perms):
         msg.debug(str(anon_perms), str(new_anon_perms))
