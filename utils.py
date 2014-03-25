@@ -304,12 +304,13 @@ def add_workspace_to_persistent_json(owner, name, url, path):
     update_persistent_data(d)
 
 
-def get_workspace_by_path(path):
+def get_workspace_by_path(path, _filter):
     for owner, workspaces in get_persistent_data()['workspaces'].items():
         for name, workspace in workspaces.items():
             if workspace['path'] == path:
-                workspace_url = workspace['url']
-                return workspace_url
+                r = _filter(workspace['url'])
+                if r:
+                    return r
 
 
 def rm(path):
