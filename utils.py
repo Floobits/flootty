@@ -292,6 +292,7 @@ def normalize_persistent_data():
     for owner, workspaces in persistent_data['workspaces'].items():
         for name, workspace in workspaces.items():
             workspace['url'] = normalize_url(workspace['url'])
+            workspace['path'] = unfuck_path(workspace['path'])
     update_persistent_data(persistent_data)
 
 
@@ -305,9 +306,10 @@ def add_workspace_to_persistent_json(owner, name, url, path):
 
 
 def get_workspace_by_path(path, _filter):
+    path = unfuck_path(path)
     for owner, workspaces in get_persistent_data()['workspaces'].items():
         for name, workspace in workspaces.items():
-            if workspace['path'] == path:
+            if unfuck_path(workspace['path']) == path:
                 r = _filter(workspace['url'])
                 if r:
                     return r

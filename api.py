@@ -185,7 +185,7 @@ def prejoin_workspace(workspace_url, dir_to_share, api_args):
 
     msg.debug('workspace: %s', json.dumps(w.body))
     anon_perms = w.body.get('perms', {}).get('AnonymousUser', [])
-    msg.log('api args: %s' % api_args)
+    msg.debug('api args: %s' % api_args)
     # TODO: not sure if this is correct. may want to default to public perms
     new_anon_perms = api_args.get('perms', {}).get('AnonymousUser', [])
     # TODO: prompt/alert user if going from private to public
@@ -195,9 +195,4 @@ def prejoin_workspace(workspace_url, dir_to_share, api_args):
         response = update_workspace(w.body['owner'], w.body['name'], w.body)
         msg.debug(str(response.body))
     utils.add_workspace_to_persistent_json(w.body['owner'], w.body['name'], workspace_url, dir_to_share)
-    # on_room_info_waterfall.add(ignore.create_flooignore, dir_to_share)
-    # on_room_info_waterfall.add(lambda: G.AGENT.upload(dir_to_share, on_room_info_msg))
-    # self.window.run_command('floobits_join_workspace', {
-    #     'workspace_url': workspace_url,
-    #     'agent_conn_kwargs': {'get_bufs': False}})
     return result
