@@ -186,7 +186,6 @@ def prejoin_workspace(workspace_url, dir_to_share, api_args):
     msg.debug('workspace: %s', json.dumps(w.body))
     anon_perms = w.body.get('perms', {}).get('AnonymousUser', [])
     msg.debug('api args: %s' % api_args)
-    # TODO: not sure if this is correct. may want to default to public perms
     new_anon_perms = api_args.get('perms', {}).get('AnonymousUser', [])
     # TODO: prompt/alert user if going from private to public
     if set(anon_perms) != set(new_anon_perms):
