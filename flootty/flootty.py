@@ -651,7 +651,7 @@ class Flootty(object):
             self.sock = ssl.wrap_socket(self.sock, ca_certs=self.cert_fd.name, cert_reqs=ssl.CERT_REQUIRED)
         elif self.port == 3448:
             self.port = 3148
-        out('Connecting to %s:%s.' % (self.host, self.port))
+        out('Connecting to %s' % self.workspace_url())
         try:
             self.sock.connect((self.host, self.port))
             if self.options.use_ssl:
