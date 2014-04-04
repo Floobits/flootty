@@ -266,6 +266,9 @@ def main():
     if options.workspace and options.owner and options.workspace_url:
         parser.error("You can either specify --workspace and --owner, or --url, but not both.")
 
+    if bool(options.workspace) != bool(options.owner):
+        parser.error("You must specify a workspace and owner or neither")
+
     if not options.workspace or not options.owner:
         floo = {}
         if options.workspace_url:
