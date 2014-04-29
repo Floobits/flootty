@@ -34,6 +34,11 @@ or...
 
     flootty --owner=myuser --workspace=myworkspace --create example_terminal
 
+By default any guests won't be allowed to press Enter to execute a command. This is done for extra security when you don't want other people corrupting your system.
+If you trust the person you are gonna work with use --unsafe option:
+    
+    flootty --owner=myuser --workspace=myworkspace --create example_terminal --unsafe
+
 To join a terminal:
 
     flootty --url=https://floobits.com/owner/workspace example_terminal
