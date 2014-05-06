@@ -90,7 +90,7 @@ except (ImportError, ValueError):
     import utils
 
 
-PROTO_VERSION = '0.1'
+PROTO_VERSION = '0.11'
 CLIENT = 'flootty'
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
@@ -98,6 +98,8 @@ FD_READ_BYTES = 65536
 SELECT_TIMEOUT = 0.1
 NET_TIMEOUT = 10
 MAX_BYTES_TO_BUFFER = 65536
+DEFAULT_HOST = "floobits.com"
+DEFAULT_PORT = 3448
 
 
 def read_floorc():
@@ -215,12 +217,12 @@ def main():
 
     parser.add_option("--host",
                       dest="host",
-                      default="floobits.com",
+                      default=DEFAULT_HOST,
                       help="The host to connect to. Deprecated. Use --url instead.")
 
     parser.add_option("-p", "--port",
                       dest="port",
-                      default=3448,
+                      default=DEFAULT_PORT,
                       help="The port to connect to. Deprecated. Use --url instead.")
 
     parser.add_option("-w", "--workspace",
@@ -278,7 +280,7 @@ def main():
     if bool(options.workspace) != bool(options.owner):
         parser.error("You must specify a workspace and owner or neither.")
 
-    for opt in ['owner', 'workspace', 'port', 'host']:
+    for opt in ['owner', 'workspace']:
         if getattr(options, opt):
             print('%s is deprecated. Please use --url instead.' % opt)
 
