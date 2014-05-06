@@ -254,6 +254,12 @@ def main():
                       default=None,
                       help="The URL of the workspace to connect to.")
 
+    parser.add_option("--resize",
+                      dest="resize",
+                      default=False,
+                      action="store_true",
+                      help="Resize your terminal to the host terminal size.")
+
     options, args = parser.parse_args()
 
     G.USERNAME = options.username
@@ -834,7 +840,8 @@ class Flootty(object):
                 self.transport('update_term', {'id': self.term_id, 'size': [buf[1], buf[0]]})
         else:
             # XXXX: this resizes the window :/
-            #os.write(pty.STDOUT_FILENO, "\x1b[8;{rows};{cols}t".format(rows=buf[0], cols=buf[1]))
+            if self.options.resize:
+                os.write(pty.STDOUT_FILENO, "\x1b[8;{rows};{cols}t".format(rows=buf[0], cols=buf[1]))
             fcntl.ioctl(pty.STDOUT_FILENO, termios.TIOCSWINSZ, buf)
 
     def cleanup(self):
