@@ -3,7 +3,7 @@
 from setuptools import setup
 
 setup(name='Flootty',
-      version='2.1.0',
+      version='2.1.1',
       description='Floobits collaborative terminal',
       author='Floobits',
       author_email='info@floobits.com',

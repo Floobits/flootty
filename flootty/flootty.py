@@ -262,6 +262,12 @@ def main():
                       action="store_true",
                       help="Resize your terminal to the host terminal size.")
 
+    parser.add_option("-P", "--preserve-ps1",
+                      dest="set_prompt",
+                      default=True,
+                      action="store_false",
+                      help="Don't change $PS1 (bash/zsh prompt)")
+
     options, args = parser.parse_args()
 
     G.USERNAME = options.username
@@ -813,9 +819,9 @@ class Flootty(object):
             color_start = "%{%F{green}%}"
             color_reset = "%{%f%}"
 
-        # Set prompt
-        cmd = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.workspace, self.term_name, color_reset)
-        write(self.master_fd, cmd)
+        if self.options.set_prompt:
+            cmd = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.workspace, self.term_name, color_reset)
+            write(self.master_fd, cmd)
 
     def _signal_winch(self, signum, frame):
         '''
