@@ -189,10 +189,12 @@ def parse_url(workspace_url):
         'secure': secure,
     }
 
+usage = '''usage: %prog [options] [terminal_name]\n
+For more help, see https://github.com/Floobits/flootty'''
+
 
 def main():
     settings = read_floorc()
-    usage = "usage: %prog  --workspace=WORKSPACE --owner=OWNER [options] term_name.\n\n\tSee https://github.com/Floobits/flootty"
     parser = optparse.OptionParser(usage=usage)
 
     parser.add_option("-u", "--username",
@@ -205,29 +207,29 @@ def main():
                       default=settings.get('secret'),
                       help="Your Floobits secret (api key)")
 
-    parser.add_option("--host",
-                      dest="host",
-                      default="floobits.com",
-                      help="The host to connect to")
-
-    parser.add_option("-p", "--port",
-                      dest="port",
-                      default=3448,
-                      help="The port to connect to")
-
     parser.add_option("-c", "--create",
                       dest="create",
                       default=False,
                       action="store_true",
                       help="The terminal name to create")
 
+    parser.add_option("--host",
+                      dest="host",
+                      default="floobits.com",
+                      help="The host to connect to. Deprecated. Use --url instead.")
+
+    parser.add_option("-p", "--port",
+                      dest="port",
+                      default=3448,
+                      help="The port to connect to. Deprecated. Use --url instead.")
+
     parser.add_option("-w", "--workspace",
                       dest="workspace",
-                      help="The workspace name")
+                      help="The workspace name. --owner is required with this option. Deprecated. Use --url instead.")
 
     parser.add_option("-o", "--owner",
                       dest="owner",
-                      help="The workspace owner")
+                      help="The workspace owner. --workspace is required with this option. Deprecated. Use --url instead.")
 
     parser.add_option("-l", "--list",
                       dest="list",
@@ -250,7 +252,7 @@ def main():
     parser.add_option("--url",
                       dest="workspace_url",
                       default=None,
-                      help="The URL of the workspace to connect to. This is a convenience for copy-pasting from the browser.")
+                      help="The URL of the workspace to connect to.")
 
     options, args = parser.parse_args()
 
@@ -264,10 +266,15 @@ def main():
     term_name = args and args[0] or default_term_name
 
     if options.workspace and options.owner and options.workspace_url:
+        # TODO: confusing
         parser.error("You can either specify --workspace and --owner, or --url, but not both.")
 
     if bool(options.workspace) != bool(options.owner):
-        parser.error("You must specify a workspace and owner or neither")
+        parser.error("You must specify a workspace and owner or neither.")
+
+    for opt in ['owner', 'workspace', 'port', 'host']:
+        if getattr(options, opt):
+            print('%s is deprecated. Please use --url instead.' % opt)
 
     if not options.workspace or not options.owner:
         floo = {}
@@ -554,6 +561,7 @@ class Flootty(object):
         reason = data.get('reason')
         out('Disconnected by server!')
         if reason:
+            # TODO: don't kill terminal until current process is done or something
             die('Reason: %s' % reason)
         self.reconnect()
 
@@ -584,7 +592,7 @@ class Flootty(object):
             return
         if not self.options.create:
             return
-        self.handle_stdio(base64.b64decode(data['data']))
+        self.handle_stdio(base64.b64decode(data['data']), data.get('user_id'))
 
     def on_term_stdout(self, data):
         if data.get('id') != self.term_id:
@@ -764,10 +772,23 @@ class Flootty(object):
 
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
-        def net_stdin_write(buf):
+        def net_stdin_write(buf, user_id=None):
             if self.options.safe:
-                buf = buf.replace('\n', '')
-                buf = buf.replace('\r', '')
+                if buf.find('\n') != -1 or buf.find('\r') != -1:
+                    to = user_id or []
+                    self.transport('datamsg', {
+                        'to': to,
+                        'data': {
+                            'name': 'safe_term',
+                            'term_id': self.term_id,
+                            'msg': 'Terminal %s is in safe mode. Other users are not allowed to press enter.' % self.term_name,
+                        }})
+                    self.transport('term_stdout', {
+                        'id': self.term_id,
+                        'data': base64.b64encode('\a').decode('utf8'),
+                        })
+                    buf = buf.replace('\n', '')
+                    buf = buf.replace('\r', '')
                 if not buf:
                     return
             write(self.master_fd, buf)
