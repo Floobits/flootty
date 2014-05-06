@@ -565,6 +565,9 @@ class Flootty(object):
             die('No terminal with name %s' % self.term_name)
         return self.join_term()
 
+    def on_ping(self, data):
+        self.transport('pong', {})
+
     def on_disconnect(self, data):
         reason = data.get('reason')
         out('Disconnected by server!')
