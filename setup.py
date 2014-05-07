@@ -2,8 +2,10 @@
 
 from setuptools import setup
 
+from flootty import version
+
 setup(name='Flootty',
-      version='2.1.1',
+      version=version.FLOOTTY_VERSION,
       description='Floobits collaborative terminal',
       author='Floobits',
       author_email='info@floobits.com',

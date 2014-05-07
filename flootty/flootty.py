@@ -81,17 +81,18 @@ except ImportError:
     from urlparse import urlparse
 
 try:
-    from . import api, cert, shared as G, utils
+    from . import api, cert, shared as G, utils, version
     assert api and cert and G and utils
 except (ImportError, ValueError):
     import api
     import cert
     import shared as G
     import utils
+    import version
 
 
 PROTO_VERSION = '0.11'
-CLIENT = 'flootty'
+CLIENT = 'flootty %s' % version.FLOOTTY_VERSION
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
 # Seconds
@@ -268,7 +269,17 @@ def main():
                       action="store_false",
                       help="Don't change $PS1 (bash/zsh prompt)")
 
+    parser.add_option("-v", "--version",
+                      dest="version",
+                      default=False,
+                      action="store_true",
+                      help="Print version")
+
     options, args = parser.parse_args()
+
+    if options.version:
+        print(CLIENT)
+        return
 
     G.USERNAME = options.username
     G.SECRET = options.secret
@@ -327,6 +338,14 @@ def main():
     for opt in ['workspace', 'owner', 'username', 'secret']:
         if not getattr(options, opt):
             parser.error('%s not given' % opt)
+
+    color_reset = '\033[0m'
+    if options.safe:
+        green = '\033[92m'
+        print('%sTerminal is safe. Other users will not be able to send [enter]%s' % (green, color_reset))
+    else:
+        yellorange = '\033[93m'
+        print('%sTerminal is unsafe. Other users will be able to send [enter]. Be wary!%s' % (yellorange, color_reset))
 
     f = Flootty(options, term_name)
     atexit.register(f.cleanup)
