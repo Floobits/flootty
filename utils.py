@@ -81,6 +81,17 @@ class Waterfall(object):
         return res
 
 
+def update_log_level():
+    try:
+        v = json.loads(G.DEBUG.lower())
+    except Exception:
+        v = G.DEBUG
+    if bool(v):
+        msg.LOG_LEVEL = msg.LOG_LEVELS['DEBUG']
+    else:
+        msg.LOG_LEVEL = msg.LOG_LEVELS['MSG']
+
+
 def reload_settings():
     floorc_settings = load_floorc()
     for name, val in floorc_settings.items():
@@ -90,10 +101,7 @@ def reload_settings():
     G.BASE_DIR = os.path.realpath(os.path.expanduser(G.BASE_DIR))
     G.COLAB_DIR = os.path.join(G.BASE_DIR, 'share')
     G.COLAB_DIR = os.path.realpath(G.COLAB_DIR)
-    if G.DEBUG == '1':
-        msg.LOG_LEVEL = msg.LOG_LEVELS['DEBUG']
-    else:
-        msg.LOG_LEVEL = msg.LOG_LEVELS['MSG']
+    update_log_level()
     mkdir(G.COLAB_DIR)
 
 
