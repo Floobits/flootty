@@ -286,7 +286,7 @@ def main():
 
     default_term_name = ""
     if options.create:
-        default_term_name = "_"
+        default_term_name = "ftty"
 
     term_name = args and args[0] or default_term_name
 
@@ -830,16 +830,22 @@ class Flootty(object):
             write(self.master_fd, buf)
 
         self.handle_stdio = net_stdin_write
-        color_start = '\\[\\e[32m\\]'
+        color_green = '\\[\\e[32m\\]'
         color_reset = '\\[\\033[0m\\]'
+        color_yellorange = '\\[\\e[93m\\]'
 
         # TODO: other shells probably use weird color escapes
         if 'zsh' in shell:
-            color_start = "%{%F{green}%}"
+            color_green = "%{%F{green}%}"
             color_reset = "%{%f%}"
+            color_yellorange = "%{%F{yellow}%}"
 
         if self.options.set_prompt:
-            cmd = 'PS1="%s%s::%s::%s%s $PS1"\n' % (color_start, self.owner, self.workspace, self.term_name, color_reset)
+            term_color = color_yellorange
+            if self.options.safe:
+                term_color = color_green
+            # Not confusing at all </sarcasm>
+            cmd = 'PS1="%s%s::%s::%s%s%s%s $PS1"\n' % (color_green, self.owner, self.workspace, color_reset, term_color, self.term_name, color_reset)
             write(self.master_fd, cmd)
 
     def _signal_winch(self, signum, frame):
