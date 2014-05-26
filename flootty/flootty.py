@@ -175,9 +175,9 @@ def parse_url(workspace_url):
         if not port:
             port = 3148
         secure = False
-    result = re.match('^/([-\@\+\.\w]+)/([-\w]+)/?$', parsed_url.path)
+    result = re.match('^/([-\@\+\.\w]+)/([-\@\+\.\w]+)/?$', parsed_url.path)
     if not result:
-        result = re.match('^/r/([-\@\+\.\w]+)/([-\w]+)/?$', parsed_url.path)
+        result = re.match('^/r/([-\@\+\.\w]+)/([-\@\+\.\w]+)/?$', parsed_url.path)
 
     if result:
         (owner, workspace_name) = result.groups()
