@@ -59,10 +59,10 @@ import tempfile
 import termios
 import tty
 import signal
-import re
 import time
 import base64
 import collections
+import errno
 
 PY2 = sys.version_info < (3, 0)
 
@@ -73,12 +73,6 @@ try:
 except (ImportError, AttributeError):
     pass
 
-
-try:
-    from urllib.parse import urlparse
-    assert urlparse
-except ImportError:
-    from urlparse import urlparse
 
 try:
     from . import api, cert, shared as G, utils, version
@@ -162,35 +156,6 @@ def die(*args):
     err(*args)
     sys.exit(1)
 
-
-def parse_url(workspace_url):
-    secure = True
-    owner = None
-    workspace_name = None
-    parsed_url = urlparse(workspace_url)
-    port = parsed_url.port
-    if not port:
-        port = 3448
-    if parsed_url.scheme == 'http':
-        if not port:
-            port = 3148
-        secure = False
-    result = re.match('^/([-\@\+\.\w]+)/([-\@\+\.\w]+)/?$', parsed_url.path)
-    if not result:
-        result = re.match('^/r/([-\@\+\.\w]+)/([-\@\+\.\w]+)/?$', parsed_url.path)
-
-    if result:
-        (owner, workspace_name) = result.groups()
-    else:
-        raise ValueError('%s is not a valid Floobits URL' % workspace_url)
-
-    return {
-        'host': parsed_url.hostname,
-        'owner': owner,
-        'port': port,
-        'workspace': workspace_name,
-        'secure': secure,
-    }
 
 usage = '''usage: %prog [options] [terminal_name]\n
 For more help, see https://github.com/Floobits/flootty'''
@@ -304,12 +269,12 @@ def main():
     if not options.workspace or not options.owner:
         floo = {}
         if options.workspace_url:
-            floo = parse_url(options.workspace_url)
+            floo = utils.parse_url(options.workspace_url)
         else:
             for floo_path in walk_up(os.path.realpath('.')):
                 try:
                     floo = json.loads(open(os.path.join(floo_path, '.floo'), 'rb').read().decode('utf-8'))
-                    floo = parse_url(floo['url'])
+                    floo = utils.parse_url(floo['url'])
                 except Exception:
                     pass
                 else:
