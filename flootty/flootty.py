@@ -314,6 +314,13 @@ def main():
         if not options.host:
             options.host = floo.get('host')
 
+    if options.host != G.DEFAULT_HOST and options.secret == default_auth.get('secret'):
+        auth = G.AUTH.get(options.host)
+        if not auth:
+            return die("I need credentials for %s in ~/.floorc.json" % options.host)
+        options.username = auth.get('username')
+        options.secret = auth.get('secret')
+
     if not options.workspace or not options.owner:
         try:
             now_editing = api.get_now_editing_workspaces()
