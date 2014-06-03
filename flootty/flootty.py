@@ -183,7 +183,7 @@ For more help, see https://github.com/Floobits/flootty'''
 
 
 def get_now_editing_workspaces():
-    api_url = 'https://%s/api/workspaces/now_editing/' % (G.DEFAULT_HOST)
+    api_url = 'https://%s/api/workspaces/now_editing' % (G.DEFAULT_HOST)
     return api.api_request(G.DEFAULT_HOST, api_url)
 
 
@@ -317,7 +317,7 @@ def main():
     if options.host != G.DEFAULT_HOST and options.secret == default_auth.get('secret'):
         auth = G.AUTH.get(options.host)
         if not auth:
-            return die("I need credentials for %s in ~/.floorc.json" % options.host)
+            return die("Please add credentials for %s in ~/.floorc.json" % options.host)
         options.username = auth.get('username')
         options.secret = auth.get('secret')
 
@@ -897,4 +897,8 @@ class Flootty(object):
         print('ciao.')
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        err(str_e(e))
+        api.send_error(None, e)
