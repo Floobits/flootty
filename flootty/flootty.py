@@ -74,12 +74,12 @@ except (ImportError, AttributeError):
 
 try:
     from . import version
-    from .floo.common import api, cert, shared as G, utils
+    from .floo.common import api, cert, shared as G, migrations, utils
     from .floo.common.exc_fmt import str_e
     assert api and G and utils and version
 except (ImportError, ValueError):
     import version
-    from floo.common import api, cert, shared as G, utils
+    from floo.common import api, cert, shared as G, migrations, utils
     from floo.common.exc_fmt import str_e
 
 
@@ -188,17 +188,20 @@ def get_now_editing_workspaces():
 
 
 def main():
+    if not os.path.exists(G.FLOORC_JSON_PATH):
+        migrations.migrate_floorc()
     utils.reload_settings()
+    default_auth = G.AUTH.get(G.DEFAULT_HOST, {})
     parser = optparse.OptionParser(usage=usage)
 
     parser.add_option("-u", "--username",
                       dest="username",
-                      default=G.USERNAME,
+                      default=default_auth.get('username'),
                       help="Your Floobits username")
 
     parser.add_option("-s", "--secret",
                       dest="secret",
-                      default=G.SECRET,
+                      default=default_auth.get('secret'),
                       help="Your Floobits secret (api key)")
 
     parser.add_option("-c", "--create",
@@ -271,9 +274,6 @@ def main():
     if options.version:
         print(CLIENT)
         return
-
-    G.USERNAME = options.username
-    G.SECRET = options.secret
 
     default_term_name = ""
     if options.create:
