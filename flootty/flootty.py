@@ -84,8 +84,7 @@ except (ImportError, ValueError):
 
 
 PROTO_VERSION = '0.11'
-CLIENT = 'flootty %s' % version.FLOOTTY_VERSION
-G.__PLUGIN_VERSION__ = CLIENT
+G.__PLUGIN_VERSION__ = version.FLOOTTY_VERSION
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
 # Seconds
@@ -273,7 +272,7 @@ def main():
     options, args = parser.parse_args()
 
     if options.version:
-        print(CLIENT)
+        print('flootty %s' % version.FLOOTTY_VERSION)
         return
 
     default_term_name = ""
@@ -683,7 +682,7 @@ class Flootty(object):
             'secret': self.options.secret,
             'room': self.workspace,
             'room_owner': self.owner,
-            'client': CLIENT,
+            'client': 'flootty %s' % version.FLOOTTY_VERSION,
             'platform': sys.platform,
             'version': PROTO_VERSION
         })
