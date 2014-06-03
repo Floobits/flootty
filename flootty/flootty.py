@@ -349,6 +349,7 @@ def main():
         print('%sTerminal is unsafe. Other users will be able to send [enter]. Be wary!%s' % (yellorange, color_reset))
 
     f = Flootty(options, term_name)
+    G.AGENT = f
     atexit.register(f.cleanup)
     f.connect_to_internet()
     f.select()
@@ -399,6 +400,7 @@ class Flootty(object):
         self.port = int(options.port)
         self.workspace = options.workspace
         self.owner = options.owner
+        self.username = options.username
         self.options = options
         self.term_name = term_name
 
