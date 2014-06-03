@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from setuptools import setup
+from setuptools import find_packages, setup
 
 from flootty import version
 
@@ -11,7 +11,7 @@ setup(name='Flootty',
       author_email='info@floobits.com',
       url='https://floobits.com/',
       license="Apache2",
-      packages=['flootty'],
+      packages=find_packages(),
       package_data={
           '': ['README.md']
       },
