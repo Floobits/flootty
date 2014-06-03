@@ -62,7 +62,6 @@ import signal
 import time
 import base64
 import collections
-import errno
 
 PY2 = sys.version_info < (3, 0)
 
@@ -73,47 +72,69 @@ try:
 except (ImportError, AttributeError):
     pass
 
-
 try:
-    from . import api, cert, shared as G, utils, version
-    assert api and cert and G and utils
+    from . import version
+    from .floo.common import api, cert, shared as G, migrations, utils
+    from .floo.common.exc_fmt import str_e
+    assert api and G and utils and version
 except (ImportError, ValueError):
-    import api
-    import cert
-    import shared as G
-    import utils
     import version
+    from floo.common import api, cert, shared as G, migrations, utils
+    from floo.common.exc_fmt import str_e
 
 
 PROTO_VERSION = '0.11'
-CLIENT = 'flootty %s' % version.FLOOTTY_VERSION
+G.__PLUGIN_VERSION__ = version.FLOOTTY_VERSION
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
 # Seconds
 SELECT_TIMEOUT = 0.1
 NET_TIMEOUT = 10
 MAX_BYTES_TO_BUFFER = 65536
-DEFAULT_HOST = "floobits.com"
-DEFAULT_PORT = 3448
 
 
-def read_floorc():
-    settings = {}
-    p = os.path.expanduser('~/.floorc')
-    try:
-        fd = open(p, 'rb')
-    except IOError as e:
-        if e.errno == 2:
-            return settings
-        raise
-    data = fd.read().decode('utf-8')
-    fd.close()
-    for line in data.split('\n'):
-        position = line.find(' ')
-        if position < 0:
-            continue
-        settings[line[:position]] = line[position + 1:]
-    return settings
+# TODO: move me to utils or use utils and reactor in common
+top_timeout_id = 0
+cancelled_timeouts = set()
+timeout_ids = set()
+timeouts = collections.defaultdict(list)
+
+
+def set_timeout(func, timeout, *args, **kwargs):
+    global top_timeout_id
+    timeout_id = top_timeout_id
+    top_timeout_id += 1
+    if top_timeout_id > 100000:
+        top_timeout_id = 0
+
+    def timeout_func():
+        timeout_ids.discard(timeout_id)
+        if timeout_id in cancelled_timeouts:
+            cancelled_timeouts.remove(timeout_id)
+            return
+        func(*args, **kwargs)
+
+    then = time.time() + (timeout / 1000.0)
+    timeouts[then].append(timeout_func)
+    timeout_ids.add(timeout_id)
+    return timeout_id
+
+
+def cancel_timeout(timeout_id):
+    if timeout_id in timeout_ids:
+        cancelled_timeouts.add(timeout_id)
+
+
+def call_timeouts():
+    now = time.time()
+    to_remove = []
+    for t, tos in timeouts.copy().items():
+        if now >= t:
+            for timeout in tos:
+                timeout()
+            to_remove.append(t)
+    for k in to_remove:
+        del timeouts[k]
 
 
 def write(fd, b):
@@ -161,18 +182,26 @@ usage = '''usage: %prog [options] [terminal_name]\n
 For more help, see https://github.com/Floobits/flootty'''
 
 
+def get_now_editing_workspaces():
+    api_url = 'https://%s/api/workspaces/now_editing' % (G.DEFAULT_HOST)
+    return api.api_request(G.DEFAULT_HOST, api_url)
+
+
 def main():
-    settings = read_floorc()
+    if not os.path.exists(G.FLOORC_JSON_PATH):
+        migrations.migrate_floorc()
+    utils.reload_settings()
+    default_auth = G.AUTH.get(G.DEFAULT_HOST, {})
     parser = optparse.OptionParser(usage=usage)
 
     parser.add_option("-u", "--username",
                       dest="username",
-                      default=settings.get('username'),
+                      default=default_auth.get('username'),
                       help="Your Floobits username")
 
     parser.add_option("-s", "--secret",
                       dest="secret",
-                      default=settings.get('secret'),
+                      default=default_auth.get('secret'),
                       help="Your Floobits secret (api key)")
 
     parser.add_option("-c", "--create",
@@ -183,12 +212,12 @@ def main():
 
     parser.add_option("--host",
                       dest="host",
-                      default=DEFAULT_HOST,
+                      default=G.DEFAULT_HOST,
                       help="The host to connect to. Deprecated. Use --url instead.")
 
     parser.add_option("-p", "--port",
                       dest="port",
-                      default=DEFAULT_PORT,
+                      default=G.DEFAULT_PORT,
                       help="The port to connect to. Deprecated. Use --url instead.")
 
     parser.add_option("-w", "--workspace",
@@ -243,11 +272,8 @@ def main():
     options, args = parser.parse_args()
 
     if options.version:
-        print(CLIENT)
+        print('flootty %s' % version.FLOOTTY_VERSION)
         return
-
-    G.USERNAME = options.username
-    G.SECRET = options.secret
 
     default_term_name = ""
     if options.create:
@@ -288,12 +314,22 @@ def main():
         if not options.host:
             options.host = floo.get('host')
 
+    if options.host != G.DEFAULT_HOST and options.secret == default_auth.get('secret'):
+        auth = G.AUTH.get(options.host)
+        if not auth:
+            return die("Please add credentials for %s in ~/.floorc.json" % options.host)
+        options.username = auth.get('username')
+        options.secret = auth.get('secret')
+
     if not options.workspace or not options.owner:
-        now_editing = api.get_now_editing_workspaces()
-        now_editing = json.loads(now_editing.read().decode('utf-8'))
-        if len(now_editing) == 1:
-            options.workspace = now_editing[0]['name']
-            options.owner = now_editing[0]['owner']
+        try:
+            now_editing = api.get_now_editing_workspaces()
+        except Exception as e:
+            print(str_e(e))
+        else:
+            if len(now_editing.body) == 1:
+                options.workspace = now_editing.body[0]['name']
+                options.owner = now_editing.body[0]['owner']
         # TODO: list possible workspaces to join if > 1 is active
 
     if options.list:
@@ -313,6 +349,7 @@ def main():
         print('%sTerminal is unsafe. Other users will be able to send [enter]. Be wary!%s' % (yellorange, color_reset))
 
     f = Flootty(options, term_name)
+    G.AGENT = f
     atexit.register(f.cleanup)
     f.connect_to_internet()
     f.select()
@@ -363,6 +400,7 @@ class Flootty(object):
         self.port = int(options.port)
         self.workspace = options.workspace
         self.owner = options.owner
+        self.username = options.username
         self.options = options
         self.term_name = term_name
 
@@ -407,7 +445,7 @@ class Flootty(object):
         attrs = ('errer', 'reader', 'writer')
 
         while True:
-            utils.call_timeouts()
+            call_timeouts()
 
             if len(self.buf_out) == 0 and self.sock:
                 self.writers.remove(self.sock.fileno())
@@ -635,7 +673,7 @@ class Flootty(object):
         self.reconnect_delay *= 1.5
         if self.reconnect_delay > 10000:
             self.reconnect_delay = 10000
-        self.reconnect_timeout = utils.set_timeout(self.connect_to_internet, self.reconnect_delay)
+        self.reconnect_timeout = set_timeout(self.connect_to_internet, self.reconnect_delay)
 
     def send_auth(self):
         self.buf_out.appendleft({
@@ -644,7 +682,7 @@ class Flootty(object):
             'secret': self.options.secret,
             'room': self.workspace,
             'room_owner': self.owner,
-            'client': CLIENT,
+            'client': 'flootty %s' % version.FLOOTTY_VERSION,
             'platform': sys.platform,
             'version': PROTO_VERSION
         })
@@ -861,4 +899,8 @@ class Flootty(object):
         print('ciao.')
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        err(str_e(e))
+        api.send_error(None, e)
