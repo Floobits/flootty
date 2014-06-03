@@ -85,6 +85,7 @@ except (ImportError, ValueError):
 
 PROTO_VERSION = '0.11'
 CLIENT = 'flootty %s' % version.FLOOTTY_VERSION
+G.__PLUGIN_VERSION__ = CLIENT
 INITIAL_RECONNECT_DELAY = 1000
 FD_READ_BYTES = 65536
 # Seconds
