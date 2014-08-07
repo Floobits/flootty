@@ -47,7 +47,7 @@ def create_flooignore(path):
         with open(flooignore, 'w') as fd:
             fd.write('\n'.join(DEFAULT_IGNORES))
     except Exception as e:
-        msg.error('Error creating default .flooignore: %s' % str_e(e))
+        msg.error('Error creating default .flooignore: ', str_e(e))
 
 
 def create_ignore_tree(path):
@@ -61,6 +61,7 @@ class Ignore(object):
     def __init__(self, path, parent=None):
         self.parent = parent
         self.size = 0
+        self.total_size = 0
         self.children = {}
         self.files = []
         self.ignores = {
@@ -73,13 +74,13 @@ class Ignore(object):
             paths = os.listdir(self.path)
         except OSError as e:
             if e.errno != errno.ENOTDIR:
-                msg.error('Error listing path %s: %s' % (self.path, str_e(e)))
+                msg.error('Error listing path ', self.path, ': ', str_e(e))
             return
         except Exception as e:
-            msg.error('Error listing path %s: %s' % (self.path, str_e(e)))
+            msg.error('Error listing path ', self.path, ': ', str_e(e))
             return
 
-        msg.debug('Initializing ignores for %s' % self.path)
+        msg.debug('Initializing ignores for ', self.path)
         for ignore_file in IGNORE_FILES:
             try:
                 self.load(ignore_file)
@@ -87,16 +88,16 @@ class Ignore(object):
                 pass
 
         for p in paths:
-            p_path = os.path.join(self.path, p)
-            if p in BLACKLIST:
-                msg.log('Ignoring blacklisted file %s' % p)
-                continue
             if p == '.' or p == '..':
                 continue
+            if p in BLACKLIST:
+                msg.log('Ignoring blacklisted file ', p)
+                continue
+            p_path = os.path.join(self.path, p)
             try:
                 s = os.stat(p_path)
             except Exception as e:
-                msg.error('Error stat()ing path %s: %s' % (p_path, str_e(e)))
+                msg.error('Error stat()ing path ', p_path, ': ', str_e(e))
                 continue
 
             is_dir = stat.S_ISDIR(s.st_mode)
@@ -107,7 +108,7 @@ class Ignore(object):
                 ig = Ignore(p_path, self)
                 self.children[p] = ig
                 ig.recurse(root)
-                # self.size += ig.size
+                self.total_size += ig.total_size
                 continue
 
             if stat.S_ISREG(s.st_mode):
@@ -116,6 +117,7 @@ class Ignore(object):
                     msg.log(self.is_ignored_message(p_path, p, '/TOO_BIG/', False))
                 else:
                     self.size += s.st_size
+                    self.total_size += s.st_size
                     self.files.append(p_path)
 
     def load(self, ignore_file):
@@ -128,13 +130,13 @@ class Ignore(object):
                 continue
             if ignore[0] == '#':
                 continue
-            msg.debug('Adding %s to ignore patterns' % ignore)
+            msg.debug('Adding ', ignore, ' to ignore patterns')
             rules.insert(0, ignore)
         self.ignores[ignore_file] = rules
 
     def get_children(self):
         children = list(self.children.values())
-        for c in children:
+        for c in self.children.values():
             children += c.get_children()
         return children
 
@@ -159,7 +161,7 @@ class Ignore(object):
             try:
                 s = os.stat(path)
             except Exception as e:
-                msg.error('Error lstat()ing path %s: %s' % (path, str_e(e)))
+                msg.error('Error lstat()ing path ', path, ': ', str_e(e))
                 return True
             is_dir = stat.S_ISDIR(s.st_mode)
         rel_path = os.path.relpath(path, self.path).replace(os.sep, '/')

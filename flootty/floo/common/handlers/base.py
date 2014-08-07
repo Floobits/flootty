@@ -5,44 +5,43 @@ except ValueError:
 from .. import msg, event_emitter, shared as G, utils
 
 
-BASE_FLOORC = '''# Floobits config
-
-# Logs messages to Sublime Text console instead of a special view
-#log_to_console 1
-
-# Enables debug mode
-#debug 1
-
-'''
-
-
 class BaseHandler(event_emitter.EventEmitter):
-    BASE_FLOORC = BASE_FLOORC
     PROTOCOL = None
 
-    def __init__(self, auth):
+    def __init__(self):
         super(BaseHandler, self).__init__()
         self.joined_workspace = False
         G.AGENT = self
-        self.username = auth.get('username')
-        self.secret = auth.get('secret')
-        self.api_key = auth.get('api_key')
+        # TODO: removeme?
         utils.reload_settings()
+        self.req_ids = {}
 
     def build_protocol(self, *args):
         self.proto = self.PROTOCOL(*args)
-        self.proto.on("data", self.on_data)
-        self.proto.on("connect", self.on_connect)
+        self.proto.on('data', self.on_data)
+        self.proto.on('connect', self.on_connect)
         return self.proto
 
-    def send(self, *args, **kwargs):
-        self.proto.put(*args, **kwargs)
+    def send(self, d):
+        """@return the request id"""
+        if not d:
+            return
+        req_id = self.proto.put(d)
+        self.req_ids[req_id] = d.get('name', '?')
+        return req_id
 
     def on_data(self, name, data):
-        handler = getattr(self, "_on_%s" % name, None)
+        req_id = data.get('res_id')
+        if req_id is not None:
+            try:
+                del self.req_ids[req_id]
+            except KeyError:
+                msg.warn('No outstanding req_id ', req_id)
+
+        handler = getattr(self, '_on_%s' % name, None)
         if handler:
             return handler(data)
-        msg.debug('unknown name!', name, 'data:', data)
+        msg.debug('unknown event name ', name, ' data: ', data)
 
     @property
     def client(self):
@@ -52,11 +51,14 @@ class BaseHandler(event_emitter.EventEmitter):
     def codename(self):
         return editor.codename()
 
+    def _on_ack(self, data):
+        msg.debug('Ack ', data)
+
     def _on_error(self, data):
-        message = 'Error from server! Message: %s' % str(data.get('msg'))
+        message = 'Error from Floobits server: %s' % str(data.get('msg'))
         msg.error(message)
         if data.get('flash'):
-            editor.error_message('Error from Floobits server: %s' % str(data.get('msg')))
+            editor.error_message(message)
 
     def _on_disconnect(self, data):
         message = 'Disconnected from server! Reason: %s' % str(data.get('reason'))
@@ -66,8 +68,12 @@ class BaseHandler(event_emitter.EventEmitter):
 
     def stop(self):
         from .. import reactor
+        if self.req_ids:
+            msg.warn("Unresponded msgs", self.req_ids)
+            self.req_ids = {}
         reactor.reactor.stop_handler(self)
-        G.AGENT = None
+        if G.AGENT is self:
+            G.AGENT = None
 
     def is_ready(self):
         return self.joined_workspace
