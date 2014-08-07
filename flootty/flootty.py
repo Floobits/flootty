@@ -86,6 +86,7 @@ except (ImportError, ValueError):
 PROTO_VERSION = '0.11'
 G.__PLUGIN_VERSION__ = version.FLOOTTY_VERSION
 INITIAL_RECONNECT_DELAY = 1000
+MAX_RETRIES = 12
 FD_READ_BYTES = 65536
 # Seconds
 SELECT_TIMEOUT = 0.1
@@ -410,6 +411,7 @@ class Flootty(object):
         self.orig_stdout_atts = None
         self.last_stdin = 0
         self.reconnect_delay = INITIAL_RECONNECT_DELAY
+        self._retries = MAX_RETRIES
 
     def add_fd(self, fileno, **kwargs):
         try:
@@ -541,6 +543,7 @@ class Flootty(object):
     def on_room_info(self, ri):
         self.authed = True
         self.ri = ri
+        self._retries = MAX_RETRIES
 
         def list_terms(terms):
             term_name = ""
@@ -673,6 +676,12 @@ class Flootty(object):
         self.reconnect_delay *= 1.5
         if self.reconnect_delay > 10000:
             self.reconnect_delay = 10000
+        if self.host == 'floobits.com':
+            # Only use proxy.floobits.com if we're trying to connect to floobits.com
+            G.OUTBOUND_FILTERING = self._retries % 4 == 0
+        self._retries -= 1
+        if self._retries == 0:
+            out('Floobits Error! Too many reconnect failures. Giving up.')
         self.reconnect_timeout = set_timeout(self.connect_to_internet, self.reconnect_delay)
 
     def send_auth(self):
@@ -699,8 +708,16 @@ class Flootty(object):
         elif self.port == 3448:
             self.port = 3148
         out('Connecting to %s' % self.workspace_url())
+
+        if G.OUTBOUND_FILTERING:
+            host = G.OUTBOUND_FILTER_PROXY_HOST
+            port = G.OUTBOUND_FILTER_PROXY_PORT
+        else:
+            host = self.host
+            port = self.port
+
         try:
-            self.sock.connect((self.host, self.port))
+            self.sock.connect((host, port))
             if self.options.use_ssl:
                 self.sock.do_handshake()
         except socket.error as e:
