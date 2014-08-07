@@ -28,6 +28,12 @@ except ImportError:
     from lib import DMP
 
 
+class JOIN_ACTION(object):
+    PROMPT = 1
+    UPLOAD = 2
+    DOWNLOAD = 3
+
+
 class FlooPatch(object):
     def __init__(self, current, buf):
         self.buf = buf
@@ -35,12 +41,20 @@ class FlooPatch(object):
         self.previous = buf['buf']
         if buf['encoding'] == 'base64':
             self.md5_before = hashlib.md5(self.previous).hexdigest()
+            self.md5_after = hashlib.md5(self.current).hexdigest()
         else:
             try:
                 self.md5_before = hashlib.md5(self.previous.encode('utf-8')).hexdigest()
-            except Exception:
+            except Exception as e:
                 # Horrible fallback if for some reason encoding doesn't agree with actual object
                 self.md5_before = hashlib.md5(self.previous).hexdigest()
+                msg.log('Error calculating md5_before for ', str(self), ': ', str_e(e))
+            try:
+                self.md5_after = hashlib.md5(self.current.encode('utf-8')).hexdigest()
+            except Exception as e:
+                # Horrible fallback if for some reason encoding doesn't agree with actual object
+                self.md5_after = hashlib.md5(self.current).hexdigest()
+                msg.log('Error calculating md5_after for ', str(self), ': ', str_e(e))
 
     def __str__(self):
         return '%s - %s' % (self.buf['id'], self.buf['path'])
@@ -56,14 +70,9 @@ class FlooPatch(object):
         for patch in patches:
             patch_str += str(patch)
 
-        if self.buf['encoding'] == 'base64':
-            md5_after = hashlib.md5(self.current).hexdigest()
-        else:
-            md5_after = hashlib.md5(self.current.encode('utf-8')).hexdigest()
-
         return {
             'id': self.buf['id'],
-            'md5_after': md5_after,
+            'md5_after': self.md5_after,
             'md5_before': self.md5_before,
             'path': self.buf['path'],
             'patch': patch_str,
@@ -80,7 +89,7 @@ def reload_settings():
     G.BASE_DIR = os.path.realpath(os.path.expanduser(G.BASE_DIR))
     G.COLAB_DIR = os.path.join(G.BASE_DIR, 'share')
     G.COLAB_DIR = os.path.realpath(G.COLAB_DIR)
-    if G.DEBUG == '1':
+    if G.DEBUG:
         msg.LOG_LEVEL = msg.LOG_LEVELS['DEBUG']
     else:
         msg.LOG_LEVEL = msg.LOG_LEVELS['MSG']
@@ -112,15 +121,18 @@ def save_floorc_json(s):
     floorc_json = {}
     for k, v in s.items():
         floorc_json[k.lower()] = v
-    print('writing %s' % floorc_json)
+    msg.log('Writing ', floorc_json)
     with open(G.FLOORC_JSON_PATH, 'w') as fd:
         fd.write(json.dumps(floorc_json, indent=4, sort_keys=True))
 
 
 def can_auth(host=None):
-    auth = G.AUTH.get(host or G.DEFAULT_HOST, {})
-    can_auth = (auth.get('username') or auth.get('api_key')) and auth.get('secret')
-    return can_auth
+    if host is None:
+        host = len(G.AUTH) and list(G.AUTH.keys())[0] or G.DEFAULT_HOST
+    auth = G.AUTH.get(host)
+    if not auth:
+        return False
+    return bool((auth.get('username') or auth.get('api_key')) and auth.get('secret'))
 
 
 cancelled_timeouts = set()
@@ -128,6 +140,14 @@ timeout_ids = set()
 
 
 def set_timeout(func, timeout, *args, **kwargs):
+    return _set_timeout(func, timeout, False, *args, **kwargs)
+
+
+def set_interval(func, timeout, *args, **kwargs):
+    return _set_timeout(func, timeout, True, *args, **kwargs)
+
+
+def _set_timeout(func, timeout, repeat, *args, **kwargs):
     timeout_id = set_timeout._top_timeout_id
     if timeout_id > 100000:
         set_timeout._top_timeout_id = 0
@@ -145,7 +165,13 @@ def set_timeout(func, timeout, *args, **kwargs):
         if timeout_id in cancelled_timeouts:
             cancelled_timeouts.remove(timeout_id)
             return
+
         func(*args, **kwargs)
+
+        if repeat:
+            editor.set_timeout(timeout_func, timeout)
+            timeout_ids.add(timeout_id)
+
     editor.set_timeout(timeout_func, timeout)
     timeout_ids.add(timeout_id)
     return timeout_id
@@ -259,19 +285,33 @@ def update_floo_file(path, data):
         floo_fd.write(json.dumps(floo_json, indent=4, sort_keys=True))
 
 
+def read_floo_file(path):
+    floo_file = os.path.join(path, '.floo')
+
+    info = {}
+    try:
+        floo_info = open(floo_file, 'rb').read().decode('utf-8')
+        info = json.loads(floo_info)
+    except (IOError, OSError):
+        pass
+    except Exception as e:
+        msg.warn('Couldn\'t read .floo file: ', floo_file, ': ', str_e(e))
+    return info
+
+
 def get_persistent_data(per_path=None):
     per_data = {'recent_workspaces': [], 'workspaces': {}}
     per_path = per_path or os.path.join(G.BASE_DIR, 'persistent.json')
     try:
         per = open(per_path, 'rb')
     except (IOError, OSError):
-        msg.debug('Failed to open %s. Recent workspace list will be empty.' % per_path)
+        msg.debug('Failed to open ', per_path, '. Recent workspace list will be empty.')
         return per_data
     try:
         data = per.read().decode('utf-8')
         persistent_data = json.loads(data)
     except Exception as e:
-        msg.debug('Failed to parse %s. Recent workspace list will be empty.' % per_path)
+        msg.debug('Failed to parse ', per_path, '. Recent workspace list will be empty.')
         msg.debug(str_e(e))
         msg.debug(data)
         return per_data
@@ -397,7 +437,7 @@ def save_buf(buf):
             else:
                 fd.write(buf['buf'])
     except Exception as e:
-        msg.error('Error saving buf: %s' % str_e(e))
+        msg.error('Error saving buf: ', str_e(e))
 
 
 def _unwind_generator(gen_expr, cb=None, res=None):
@@ -405,12 +445,14 @@ def _unwind_generator(gen_expr, cb=None, res=None):
         while True:
             maybe_func = res
             args = []
+            # if the first arg is callable, we need to call it (and assume the last argument is a callback)
             if type(res) == tuple:
                 maybe_func = len(res) and res[0]
 
             if not callable(maybe_func):
                 # send only accepts one argument... this is slightly dangerous if
                 # we ever just return a tuple of one elemetn
+                # TODO: catch no generator
                 if type(res) == tuple and len(res) == 1:
                     res = gen_expr.send(res[0])
                 else:
@@ -419,10 +461,17 @@ def _unwind_generator(gen_expr, cb=None, res=None):
 
             def f(*args):
                 return _unwind_generator(gen_expr, cb, args)
-            args = list(res)[1:]
+
+            try:
+                args = list(res)[1:]
+            except:
+                # assume not iterable
+                args = []
+
             args.append(f)
             return maybe_func(*args)
-        # TODO: probably shouldn't catch StopIteration to return since that can occur by accident...
+
+    # TODO: probably shouldn't catch StopIteration to return since that can occur by accident...
     except StopIteration:
         pass
     except __StopUnwindingException as e:
