@@ -829,8 +829,13 @@ class Flootty(object):
         self.add_fd(pty.STDIN_FILENO, reader=stdin_write, name='create_term_stdin_write')
 
         def net_stdin_write(buf, user_id=None):
+            # Lame work-around to get this working in python 2 and 3
+            a = '\a'.encode('utf-8')
+            n = '\n'.encode('utf-8')
+            r = '\r'.encode('utf-8')
+            empty = ''.encode('utf-8')
             if self.options.safe:
-                if buf.find('\n') != -1 or buf.find('\r') != -1:
+                if buf.find(n) != -1 or buf.find(r) != -1:
                     to = user_id or []
                     self.transport('datamsg', {
                         'to': to,
@@ -841,10 +846,10 @@ class Flootty(object):
                         }})
                     self.transport('term_stdout', {
                         'id': self.term_id,
-                        'data': base64.b64encode('\a').decode('utf8'),
-                        })
-                    buf = buf.replace('\n', '')
-                    buf = buf.replace('\r', '')
+                        'data': base64.b64encode(a).decode('utf-8'),
+                    })
+                    buf = buf.replace(n, empty)
+                    buf = buf.replace(r, empty)
                 if not buf:
                     return
             write(self.master_fd, buf)
