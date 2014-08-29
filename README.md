@@ -6,6 +6,8 @@ Flootty is a collaborative terminal. In practice, it's similar to a shared scree
 Flootty makes it dead simple for multiple users to share a shell.
 We also added a pty to our browser based editor for those without a terminal.
 
+[![PyPI version](https://badge.fury.io/py/flootty.svg)](http://badge.fury.io/py/flootty)
+
 
 ## Installation
 
