@@ -8,6 +8,7 @@ AUTH = {}
 
 DEBUG = False
 SOCK_DEBUG = False
+SOCK_SINGLE_READ = False
 
 EXPERT_MODE = False
 
@@ -39,6 +40,7 @@ WORKSPACE_WINDOW = None
 
 PERMS = []
 FOLLOW_MODE = False
+FOLLOW_USERS = set()
 SPLIT_MODE = False
 
 AUTO_GENERATED_ACCOUNT = False
@@ -51,7 +53,6 @@ TICK_TIME = 100
 AGENT = None
 IGNORE = None
 
-IGNORE_MODIFIED_EVENTS = False
 VIEW_TO_HASH = {}
 
 FLOORC_PATH = os.path.expanduser(os.path.join('~', '.floorc'))
