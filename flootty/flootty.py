@@ -315,6 +315,9 @@ def main():
         if not options.host:
             options.host = floo.get('host')
 
+    if options.host is None:
+        options.host = G.DEFAULT_HOST
+
     if options.host != G.DEFAULT_HOST and options.secret == default_auth.get('secret'):
         auth = G.AUTH.get(options.host)
         if not auth:
@@ -324,7 +327,7 @@ def main():
 
     if not options.workspace or not options.owner:
         try:
-            now_editing = api.get_now_editing_workspaces()
+            now_editing = get_now_editing_workspaces()
         except Exception as e:
             print(str_e(e))
         else:
