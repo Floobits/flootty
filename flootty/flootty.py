@@ -836,8 +836,12 @@ class Flootty(object):
             a = '\a'.encode('utf-8')
             n = '\n'.encode('utf-8')
             r = '\r'.encode('utf-8')
+            eof = '\004'.encode('utf-8')
             empty = ''.encode('utf-8')
             if self.options.safe:
+                # Stop people from using ctrl+d to end sessions
+                if buf.find(eof) != -1:
+                    buf = buf.replace(eof, empty)
                 if buf.find(n) != -1 or buf.find(r) != -1:
                     to = user_id or []
                     self.transport('datamsg', {
