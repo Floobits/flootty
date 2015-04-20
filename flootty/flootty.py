@@ -360,7 +360,8 @@ def main():
 
 
 def walk_up(path):
-    step_up = lambda x: os.path.realpath(os.path.join(x, '..'))
+    def step_up(p):
+        return os.path.realpath(os.path.join(p, '..'))
     parent = step_up(path)
     while parent != path:
         yield path
