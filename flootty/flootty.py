@@ -28,22 +28,6 @@ except NameError:
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# boilerplate to allow running as script directly
-if __name__ == "__main__" and __package__ is None:
-    import sys
-    import os
-    # The following assumes the script is in the top level of the package
-    # directory.  We use dirname() to help get the parent directory to add to
-    # sys.path, so that we can import the current package.  This is necessary
-    # since when invoked directly, the 'current' package is not automatically
-    # imported.
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.insert(0, parent_dir)
-    import flootty
-    assert flootty
-    __package__ = str("flootty")
-    del sys, os
-
 import atexit
 import fcntl
 import json
@@ -62,6 +46,20 @@ import signal
 import time
 import base64
 import collections
+
+# boilerplate to allow running as script directly
+if __name__ == "__main__" and __package__ is None:
+    # The following assumes the script is in the top level of the package
+    # directory.  We use dirname() to help get the parent directory to add to
+    # sys.path, so that we can import the current package.  This is necessary
+    # since when invoked directly, the 'current' package is not automatically
+    # imported.
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, parent_dir)
+    import flootty
+    assert flootty
+    __package__ = str("flootty")
+
 
 PY2 = sys.version_info < (3, 0)
 
