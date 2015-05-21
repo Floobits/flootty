@@ -877,7 +877,10 @@ class Flootty(object):
                 term_color = color_green
             # Not confusing at all </sarcasm>
             cmd = 'PS1="%s%s::%s::%s%s%s%s $PS1"\n' % (color_green, self.owner, self.workspace, color_reset, term_color, self.term_name, color_reset)
-            write(self.master_fd, cmd)
+            if 'fish' in shell:
+                out('Unable to set prompt for your shell. Do not forget that you are sharing this terminal!')
+            else:
+                write(self.master_fd, cmd)
 
     def _signal_winch(self, signum, frame):
         '''
