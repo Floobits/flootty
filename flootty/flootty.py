@@ -343,6 +343,8 @@ def main():
             parser.error('%s not given' % opt)
 
     color_reset = '\033[0m'
+    if not G.FLOOTTY_SAFE:
+        options.safe = G.FLOOTTY_SAFE
     if options.safe:
         green = '\033[92m'
         print('%sTerminal is safe. Other users will not be able to send [enter]%s' % (green, color_reset))
