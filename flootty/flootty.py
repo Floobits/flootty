@@ -618,28 +618,32 @@ class Flootty(object):
     def on_create_term(self, data):
         if data.get('term_name') != self.term_name:
             return
-        self.term_id = data.get('id')
+        self.term_id = int(data.get('id'))
         self.create_term()
 
     def on_delete_term(self, data):
-        if data.get('id') != self.term_id:
+        term_id = int(data.get('id'))
+        if term_id != self.term_id:
             return
         die('User %s killed the terminal. Exiting.' % (data.get('username')))
 
     def on_update_term(self, data):
-        if data.get('id') != self.term_id:
+        term_id = int(data.get('id'))
+        if term_id != self.term_id:
             return
         self._set_pty_size()
 
     def on_term_stdin(self, data):
-        if data.get('id') != self.term_id:
+        term_id = int(data.get('id'))
+        if term_id != self.term_id:
             return
         if not self.options.create:
             return
         self.handle_stdio(base64.b64decode(data['data']), data.get('user_id'))
 
     def on_term_stdout(self, data):
-        if data.get('id') != self.term_id:
+        term_id = int(data.get('id'))
+        if term_id != self.term_id:
             return
         self.handle_stdio(data['data'])
 
