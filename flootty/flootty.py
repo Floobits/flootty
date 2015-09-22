@@ -256,7 +256,7 @@ def main():
 
     parser.add_option("--shell",
                       dest="shell",
-                      default=os.environ.get('SHELL', None),
+                      default=os.environ.get("SHELL", None),
                       help="The shell you would like to use with flootty. Defaults to $SHELL.")
 
     parser.add_option("-P", "--preserve-ps1",
