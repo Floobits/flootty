@@ -256,7 +256,7 @@ def main():
 
     parser.add_option("--shell",
                       dest="shell",
-                      default=None,
+                      default=os.environ.get('SHELL', None),
                       help="The shell you would like to use with flootty. Defaults to $SHELL.")
 
     parser.add_option("-P", "--preserve-ps1",
@@ -795,11 +795,9 @@ class Flootty(object):
             return
         shell = self.options.shell
         if shell is None:
-            shell = os.environ.get('SHELL', None)
-            if shell is None:
-                default_shell = '/bin/sh'
-                out('SHELL not set as an enviornment variable, unable to determine your default shell, using %s' % default_shell)
-                shell = default_shell
+            default_shell = '/bin/sh'
+            out('SHELL not set as an enviornment variable, unable to determine your default shell, using %s' % default_shell)
+            shell = default_shell
         out('Successfully joined %s' % (self.workspace_url()))
 
         self.child_pid, self.master_fd = pty.fork()
