@@ -10,7 +10,7 @@ try:
     from . import base
     from ..reactor import reactor
     from ..lib import DMP
-    from .. import msg, ignore, shared as G, utils
+    from .. import msg, ignore, repo, shared as G, utils
     from ..exc_fmt import str_e
     from ... import editor
     from ..protocols import floo_proto
@@ -20,7 +20,7 @@ except (ImportError, ValueError) as e:
     from floo.common.lib import DMP
     from floo.common.reactor import reactor
     from floo.common.exc_fmt import str_e
-    from floo.common import msg, ignore, shared as G, utils
+    from floo.common import msg, ignore, repo, shared as G, utils
     from floo.common.protocols import floo_proto
 
 try:
@@ -34,9 +34,9 @@ except ImportError:
     io = None
 
 
-MAX_WORKSPACE_SIZE = 100000000  # 100MB
+MAX_WORKSPACE_SIZE = 200000000  # 200MB
 TOO_BIG_TEXT = '''Maximum workspace size is %.2fMB.\n
-%s is too big (%.2fMB) to upload.\n\nWould you like to ignore the following and continue?\n\n%s'''
+%s is too big (%.2fMB) to upload.\n\nWould you like to ignore these paths and continue?\n\n%s'''
 
 
 class FlooHandler(base.BaseHandler):
@@ -285,7 +285,11 @@ class FlooHandler(base.BaseHandler):
         if view:
             view.rename(new)
         else:
-            os.rename(old, new)
+            try:
+                os.rename(old, new)
+            except Exception as e:
+                msg.debug('Error moving ', old, 'to', new, str_e(e))
+                utils.save_buf(self.bufs[data.id])
         self.bufs[data['id']]['path'] = data['path']
 
     def _on_delete_buf(self, data):
@@ -491,7 +495,7 @@ class FlooHandler(base.BaseHandler):
             else:
                 yield self._initial_upload, ig, missing_bufs, changed_bufs
 
-        success_msg = 'Successfully joined workspace %s/%s' % (self.owner, self.workspace)
+        success_msg = '%s@%s/%s: Joined!' % (self.username, self.owner, self.workspace)
         msg.log(success_msg)
         editor.status_message(success_msg)
 
@@ -505,6 +509,18 @@ class FlooHandler(base.BaseHandler):
         hangout_url = hangout.get('url')
         if hangout_url:
             self.prompt_join_hangout(hangout_url)
+
+        if data.get('repo_info'):
+            msg.log('Repo info:', data.get('repo_info'))
+            # TODO: check local repo info and update remote (or prompt?)
+        else:
+            repo_info = repo.get_info(self.workspace_url, G.PROJECT_PATH)
+            if repo_info and 'repo' in G.PERMS:
+                self.send({
+                    'name': 'repo',
+                    'action': 'set',
+                    'data': repo_info,
+                })
 
         self.emit("room_info")
 
@@ -749,6 +765,14 @@ class FlooHandler(base.BaseHandler):
         except Exception as e:
             msg.error('Failed to create buffer ', path, ': ', str_e(e))
         return size
+
+    def kick(self, user_id):
+        if 'kick' not in G.PERMS:
+            return
+        self.send({
+            'name': 'kick',
+            'user_id': user_id,
+        })
 
     def stop(self):
         utils.cancel_timeout(self.upload_timeout)
