@@ -341,7 +341,11 @@ def main():
         if len(term_name) != 0:
             die("I don't understand why you gave me a positional argument.")
 
-    for opt in ['workspace', 'owner', 'username', 'secret']:
+    for opt in ['username', 'secret']:
+        if not getattr(options, opt):
+            parser.error('%s not given. Please use --%s or add credentials to ~/.floorc.json' % (opt, opt))
+
+    for opt in ['workspace', 'owner']:
         if not getattr(options, opt):
             parser.error('%s not given' % opt)
 
