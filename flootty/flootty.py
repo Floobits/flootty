@@ -538,7 +538,7 @@ class Flootty(object):
             before, sep, after = self.buf_in.partition(b'\n')
             if not sep:
                 break
-            data = json.loads(before.decode('utf-8'), encoding='utf-8')
+            data = json.loads(before.decode('utf-8'))
             self.handle_event(data)
             self.buf_in = after
 
