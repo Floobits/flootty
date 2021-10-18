@@ -585,6 +585,7 @@ class Flootty(object):
                 self.term_name = "_"
                 if choice == 'y':
                     self.options.create = True
+                    out('Sharing your terminal. To stop sharing your terminal, exit your shell. (ctrl+d, type "exit", etc)')
                     buf = self._get_pty_size()
                     return self.transport('create_term', {'term_name': self.term_name, 'size': [buf[1], buf[0]]})
                 else:
@@ -757,7 +758,7 @@ class Flootty(object):
         return '%s://%s%s/%s/%s' % (proto_str, self.host, port_str, self.owner, self.workspace)
 
     def join_term(self):
-        out('Successfully joined %s' % (self.workspace_url()))
+        out('Successfully joined workspace %s' % (self.workspace_url()))
         self.orig_stdout_atts = tty.tcgetattr(sys.stdout)
         stdout = sys.stdout.fileno()
         tty.setraw(stdout)
@@ -827,7 +828,7 @@ class Flootty(object):
             except:
                 data = None
             if not data:
-                return die("Time to go!")
+                return die("Shell exited. You are no longer sharing your terminal.")
 
             self.transport("term_stdout", {'data': base64.b64encode(data).decode('utf8'), 'id': self.term_id})
             write(pty.STDOUT_FILENO, data)
@@ -944,7 +945,7 @@ class Flootty(object):
             self.cert_fd.close()
         except Exception:
             pass
-        print('ciao.')
+        print('ciao!')
 
 if __name__ == '__main__':
     try:
